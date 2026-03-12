@@ -1,0 +1,214 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+datasource db {
+  provider = "postgresql" 
+  url      = env("DATABASE_URL")
+}
+
+// 1. Danh mục sản phẩm (Đã có từ GĐ1, thêm relation assets)
+enum ProductCategory {
+  SERVER
+  MEMORY
+  STORAGE
+  CPU
+  GPU
+  NETWORK
+  ACCESSORY
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  modelNumber  String   @unique
+  category     ProductCategory   
+  type         String?
+  attributes   Json?
+  vendor       String
+  assets       Asset[]  // Một loại sản phẩm có nhiều thiết bị cụ thể
+  description  String?
+  createdAt    DateTime @default(now())
+
+  @@index([category])
+  @@index([category, type])
+  @@index([vendor])
+  @@index([modelNumber])
+}
+
+// 2. Kho hàng (Warehouse)
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String   // Ví dụ: Kho Nội chính, Kho DC Quang Trung
+  location  String?
+  racks     Rack[]
+  assets    Asset[]
+}
+
+// 3. Tủ Rack
+enum RackType {
+  DATACENTER  // Tủ Rack Datacenter (có vị trí U)
+  STORAGE     // Tủ lưu trữ thiết bị (không có U)
+}
+
+model Rack {
+  id           String    @id @default(cuid())
+  name         String    // Ví dụ: Rack A1, Rack B2
+  type         RackType  @default(DATACENTER)
+  totalUnits   Int?      // Chỉ dùng cho DATACENTER
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  assets       Asset[]
+  createdAt    DateTime  @default(now())
+}
+
+model Asset {
+  id           String      @id @default(cuid())
+  serialNumber String      @unique
+  owner        String?
+  status       AssetStatus @default(IN_STOCK)
+  
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id])
+
+  warehouseId  String
+  warehouse    Warehouse   @relation(fields: [warehouseId], references: [id])
+  rackId       String?
+  rack         Rack?       @relation(fields: [rackId], references: [id])
+  rackUnit     Int?
+  uHeight      Int         @default(1) // Chiều cao thiết bị tính bằng U
+
+  // --- BỔ SUNG GIAI ĐOẠN 3: ASSEMBLY ---
+  parentId     String?     // ID của thiết bị cha (ví dụ: Server)
+  parent       Asset?      @relation("AssetToComponent", fields: [parentId], references: [id])
+  components   Asset[]     @relation("AssetToComponent")
+  rentalContracts RentalContract[]
+  movements    StockMovement[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  notes        String?   @db.Text
+  
+  // Soft Delete fields
+  deletedAt    DateTime?
+  deletedById  String?
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  assetId   String?
+  asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  type      MoveType
+  note      String?
+  userId        String
+  user          User     @relation("ActorUser", fields: [userId], references: [id])
+  targetUserId  String?
+  targetUser    User?    @relation("TargetUser", fields: [targetUserId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([userId])
+  @@index([assetId])
+}
+
+enum MoveType {
+  IMPORT
+  EXPORT
+  TRANSFER
+  DELETE
+  RESTORE
+  HARD_DELETE
+  RENT
+  RETURN
+  ASSEMBLE    // Lắp ráp vào thiết bị khác
+  DISASSEMBLE // Tháo rời
+  CREATE_USER
+  UPDATE_USER
+  DISABLE_USER
+  ENABLE_USER
+  DELETE_USER
+  RESET_PASSWORD
+
+  CREATE_PRODUCT
+  UPDATE_PRODUCT
+  DELETE_PRODUCT
+
+  CREATE_WAREHOUSE
+  UPDATE_WAREHOUSE
+  DELETE_WAREHOUSE
+
+  CREATE_RACK
+  UPDATE_RACK
+  DELETE_RACK
+
+  CREATE_RENTAL
+  UPDATE_RENTAL
+  RETURN_RENTAL
+  DELETE_RENTAL
+}
+
+enum AssetStatus {
+  IN_STOCK      // Trong kho
+  RESERVED      // Đã giữ/Tạm cấp/Đã claim chờ xuất (Enterprise specific)
+  DEPLOYED      // Đang sử dụng
+  MAINTENANCE   // Đang bảo trì 
+  FAULTY        // Lỗi / Hỏng
+  DISPOSED      // Đã thanh lý
+  RENTED        // Đang cho thuê
+  INSTALLED     // Đã lắp đặt tại site khách hàng (có thể là một bước sau RENTED) 
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  movements         StockMovement[] @relation("ActorUser")
+  targetedMovements StockMovement[] @relation("TargetUser")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum RentalStatus {
+  ACTIVE        // Đang trong thời hạn thuê
+  EXPIRED       // Đã hết hạn nhưng chưa trả
+  RETURNED      // Đã trả lại thiết bị
+  CANCELLED     // Đã hủy
+}
+
+
+// ==========================================
+// 3. TẠO MODEL HỢP ĐỒNG THUÊ
+// ==========================================
+model RentalContract {
+  id              String        @id @default(cuid())
+  customerName    String
+  startDate       DateTime
+  endDate         DateTime
+  status          RentalStatus  @default(ACTIVE)
+
+  // Mối quan hệ: Một hợp đồng thuộc về một thiết bị
+  assetId         String
+  asset           Asset         @relation(fields: [assetId], references: [id])
+
+  // Cảnh báo tự động
+  alert14Sent       Boolean     @default(false)
+  alert7Sent        Boolean     @default(false)
+  alert3Sent        Boolean     @default(false)
+  alert1Sent        Boolean     @default(false)
+  alertExpiredSent  Boolean     @default(false)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}

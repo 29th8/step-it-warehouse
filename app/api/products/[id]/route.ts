@@ -1,0 +1,111 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { z } from "zod";
+import { ProductSchema } from "@/lib/validations/product";
+
+type Props = { params: Promise<{ id: string }> };
+
+// GET CHI TIẾT
+export async function GET(req: Request, props: Props) {
+  try {
+    const { id } = await props.params;
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { _count: { select: { assets: true } } }
+    });
+    if (!product) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 });
+    return NextResponse.json(product);
+  } catch (error) {
+    return NextResponse.json({ error: "Lỗi Server" }, { status: 500 });
+  }
+}
+
+// PATCH: SỬA THÔNG TIN
+export async function PATCH(req: Request, props: Props) {
+  try {
+    const { id } = await props.params;
+    const rawData = await req.json();
+    const data = ProductSchema.parse(rawData);
+
+    // Normalization: standardize type value
+    const normalizedType = data.type ? data.type.toUpperCase() : null;
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: {
+        name: data.name,
+        modelNumber: data.modelNumber,
+        category: data.category,
+        type: normalizedType,
+        vendor: data.vendor,
+        description: data.description,
+        attributes: data.attributes || {}
+      }
+    });
+
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      await prisma.stockMovement.create({
+        data: {
+          type: "UPDATE_PRODUCT",
+          note: `Cập nhật sản phẩm: ${updated.name}`,
+          userId: session.user.id,
+        }
+      });
+    }
+
+    return NextResponse.json(updated);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      const zodError = error as any;
+      return NextResponse.json({ error: zodError.errors[0].message }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Lỗi cập nhật sản phẩm" }, { status: 500 });
+  }
+}
+
+// DELETE: XÓA VÀ RÀNG BUỘC NGHIÊM NGẶT
+export async function DELETE(req: Request, props: Props) {
+  try {
+    const { id } = await props.params;
+
+    // 1. Kiểm tra ràng buộc: Sản phẩm này có Asset nào đang dùng không?
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { _count: { select: { assets: true } } }
+    });
+
+    if (!product) return NextResponse.json({ error: "Không tìm thấy sản phẩm" }, { status: 404 });
+
+    if (product._count.assets > 0) {
+      return NextResponse.json(
+        { error: `Không thể xóa sản phẩm này vì đang có ${product._count.assets} thiết bị thuộc loại này trong kho.` },
+        { status: 400 } // Trả về 400 Bad Request
+      );
+    }
+
+    // 2. Nếu = 0, cho phép xóa
+    const session = await getServerSession(authOptions);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.product.delete({ where: { id } });
+
+      if (session?.user?.id) {
+        await tx.stockMovement.create({
+          data: {
+            type: "DELETE_PRODUCT",
+            note: `Xóa sản phẩm: ${product.name}`,
+            userId: session.user.id,
+          }
+        });
+      }
+    });
+
+    return NextResponse.json({ message: "Đã xóa danh mục thành công" });
+
+  } catch (error) {
+    return NextResponse.json({ error: "Lỗi hệ thống khi xóa" }, { status: 500 });
+  }
+}
