@@ -3,12 +3,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { SidebarProvider } from "@/context/sidebar-context";
-import { Sidebar } from "@/components/layout/sidebar";
-import { MainLayoutWrapper } from "@/components/layout/main-layout-wrapper";
-// import { AuthProvider } from "@/components/providers/auth-provider"; // Đã có từ bước trước
 import { ToastProvider } from "@/components/common/toast-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "sonner";
 import { classNames } from "@/lib/utils";
 import AuthProvider from "@/components/session-provider";
@@ -29,17 +24,8 @@ export default function RootLayout({
     <html lang="vi">
       <body className={classNames(inter.className, "bg-slate-50")}>
         <AuthProvider>
-          <ToastProvider> {/* <--- BỌC ToastProvider Ở ĐÂY */}
-            <TooltipProvider>
-              <SidebarProvider>
-                <div className="flex">
-                  <Sidebar />
-                  <MainLayoutWrapper>
-                    {children}
-                  </MainLayoutWrapper>
-                </div>
-              </SidebarProvider>
-            </TooltipProvider>
+          <ToastProvider>
+            {children}
             <Toaster richColors position="top-right" />
           </ToastProvider>
         </AuthProvider>

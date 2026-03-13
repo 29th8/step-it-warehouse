@@ -23,13 +23,13 @@ export default function LoginPage() {
       redirect: false,
     });
 
-    if (res?.error) {
-      toast.error(res.error);
+    if (res?.ok) {
+      router.replace("/");
+      router.refresh();
     } else {
-      router.push("/");
+      toast.error(res?.error || "Sai tài khoản hoặc mật khẩu");
     }
   };
-
   return (
     <div className="flex h-screen w-full items-center justify-center bg-slate-50">
       <Card className="w-[400px] shadow-xl">
