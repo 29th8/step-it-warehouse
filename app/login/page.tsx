@@ -16,16 +16,17 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     const res = await signIn("credentials", {
       username,
       password,
       redirect: false,
     });
 
-    if (res?.ok && !res?.error) {
-      router.push("/");
+    if (res?.error) {
+      toast.error(res.error);
     } else {
-      toast.error(res?.error || "Lỗi đăng nhập hệ thống");
+      router.push("/dashboard");
     }
   };
 
