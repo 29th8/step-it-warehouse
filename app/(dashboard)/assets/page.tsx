@@ -14,10 +14,8 @@ import { Download } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
-  getStorageFormFactors,
   getCpuSeries
 } from "@/lib/product-options";
 
@@ -28,10 +26,15 @@ export default function AssetListPage() {
   const router = useRouter();
   const [allAssets, setAllAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 50;
 
   // States Lọc
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("main");
 
   // States Lọc Động Mới
   const [selCategory, setSelCategory] = useState<string>("ALL");
@@ -43,64 +46,51 @@ export default function AssetListPage() {
   const [selSeries, setSelSeries] = useState<string>("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
 
-  // ==========================================
-  // HÀM FETCH DATA (ĐÃ FIX LỖI MẤT DANH SÁCH)
-  // ==========================================
-  const fetchAssets = useCallback(() => {
+  const fetchAssets = useCallback((p = page) => {
     setLoading(true);
-
     const params = new URLSearchParams();
     if (selCategory !== "ALL") params.append("category", selCategory);
     if (selVendor) params.append("vendor", selVendor);
     if (searchQuery) params.append("search", searchQuery);
     if (ownerFilter) params.append("owner", ownerFilter);
-
     if (selCategory === "MEMORY") {
       if (selGeneration && selGeneration !== "none") params.append("generation", selGeneration);
       if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
     }
-
     if (selCategory === "STORAGE") {
       if (selAttrType && selAttrType !== "none") params.append("attrType", selAttrType);
       if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
       if (selInterface && selInterface !== "none") params.append("interface", selInterface);
     }
-
     if (selCategory === "CPU") {
       if (selSeries && selSeries !== "none") params.append("series", selSeries);
     }
-
-    // Limit if needed
-    // params.append("take", "50");
+    params.append("page", String(p));
+    params.append("pageSize", String(PAGE_SIZE));
 
     fetch(`/api/assets?${params.toString()}`)
-      .then((res) => res.json())
-      .then((responseJson) => {
-        if (Array.isArray(responseJson)) {
-          setAllAssets(responseJson);
-        } else if (responseJson && Array.isArray(responseJson.data)) {
-          setAllAssets(responseJson.data);
-        } else {
-          setAllAssets([]);
-        }
+      .then(res => res.json())
+      .then(json => {
+        if (Array.isArray(json)) { setAllAssets(json); setTotal(json.length); setTotalPages(1); }
+        else { setAllAssets(json.data || []); setTotal(json.total || 0); setTotalPages(json.totalPages || 1); }
       })
-      .catch((err) => {
-        console.error("Lỗi khi tải dữ liệu:", err);
-        setAllAssets([]);
-      })
+      .catch(() => setAllAssets([]))
       .finally(() => setLoading(false));
-  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery, ownerFilter]);
+  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery, ownerFilter, page]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchAssets();
-    }, 400);
+    const timer = setTimeout(() => { fetchAssets(1); setPage(1); }, 400);
     return () => clearTimeout(timer);
-  }, [fetchAssets]);
+  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery, ownerFilter]);
+
+  useEffect(() => { fetchAssets(page); }, [page]);
 
   const onCategoryChange = (val: string) => {
     setSelCategory(val);
     setSelGeneration(""); setSelCapacity(""); setSelAttrType(""); setSelInterface(""); setSelSeries("");
+    setPage(1);
+    if (COMP_CATEGORIES.includes(val)) setActiveTab("component");
+    else if (MAIN_CATEGORIES.includes(val)) setActiveTab("main");
   };
 
   // ==========================================
@@ -179,7 +169,7 @@ export default function AssetListPage() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={fetchAssets}
+                onClick={() => fetchAssets(page)}
                 disabled={loading}
                 className="h-11 w-11 shrink-0 bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all"
               >
@@ -248,13 +238,12 @@ export default function AssetListPage() {
                     {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Select value={selCapacity} onValueChange={setSelCapacity}>
-                  <SelectTrigger className="w-[120px] h-9 bg-blue-50/50 border-blue-200 shrink-0"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Tất cả --</SelectItem>
-                    {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input
+                  placeholder="Dung lượng..."
+                  value={selCapacity}
+                  onChange={e => setSelCapacity(e.target.value)}
+                  className="w-[120px] h-9 bg-blue-50/50 border-blue-200 shrink-0 text-sm"
+                />
               </>
             )}
 
@@ -267,13 +256,12 @@ export default function AssetListPage() {
                     {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Select value={selCapacity} onValueChange={setSelCapacity}>
-                  <SelectTrigger className="w-[120px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Tất cả --</SelectItem>
-                    {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input
+                  placeholder="Dung lượng..."
+                  value={selCapacity}
+                  onChange={e => setSelCapacity(e.target.value)}
+                  className="w-[120px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0 text-sm"
+                />
                 <Select value={selInterface} onValueChange={setSelInterface}>
                   <SelectTrigger className="w-[120px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
                   <SelectContent>
@@ -309,7 +297,7 @@ export default function AssetListPage() {
       </div>
 
       {/* ================= TABS CONTAINER ================= */}
-      <Tabs defaultValue="main" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="inline-flex h-auto p-1 bg-slate-100/80 rounded-lg mb-6 border border-slate-200/60">
           <TabsTrigger
             value="main"
@@ -346,6 +334,22 @@ export default function AssetListPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* PAGINATION */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm">
+          <p className="text-sm text-slate-500">
+            Trang <strong>{page}</strong> / {totalPages} &nbsp;·&nbsp; Tổng <strong>{total}</strong> thiết bị
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1}>«</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹ Trước</Button>
+            <span className="text-sm font-medium px-2">{page}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Sau ›</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

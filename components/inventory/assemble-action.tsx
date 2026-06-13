@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
   getCpuSeries
@@ -174,13 +173,7 @@ export function AssembleAction({ parentId, onRefresh }: AssembleActionProps) {
                   {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={selCapacity} onValueChange={setSelCapacity}>
-                <SelectTrigger className="w-[120px] h-9 shrink-0"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-- Tất cả --</SelectItem>
-                  {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input placeholder="Dung lượng..." value={selCapacity} onChange={e => setSelCapacity(e.target.value)} className="w-[110px] h-9 shrink-0 text-sm" />
             </>
           )}
 
@@ -193,13 +186,7 @@ export function AssembleAction({ parentId, onRefresh }: AssembleActionProps) {
                   {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={selCapacity} onValueChange={setSelCapacity}>
-                <SelectTrigger className="w-[120px] h-9 shrink-0"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-- Tất cả --</SelectItem>
-                  {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input placeholder="Dung lượng..." value={selCapacity} onChange={e => setSelCapacity(e.target.value)} className="w-[110px] h-9 shrink-0 text-sm" />
               <Select value={selInterface} onValueChange={setSelInterface}>
                 <SelectTrigger className="w-[120px] h-9 shrink-0"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
                 <SelectContent>

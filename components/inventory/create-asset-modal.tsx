@@ -12,10 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
-  getStorageFormFactors,
   getCpuSeries
 } from "@/lib/product-options";
 
@@ -322,13 +320,12 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-500">Capacity</label>
-                    <Select value={selCapacity} onValueChange={setSelCapacity}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Tất cả" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">-- Hủy lọc --</SelectItem>
-                        {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      placeholder="VD: 32GB, 64GB..."
+                      className="bg-white"
+                      value={selCapacity}
+                      onChange={e => setSelCapacity(e.target.value)}
+                    />
                   </div>
                 </div>
               )}
@@ -347,13 +344,12 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-500">Dung lượng</label>
-                    <Select value={selCapacity} onValueChange={setSelCapacity}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Tất cả" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">-- Hủy lọc --</SelectItem>
-                        {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      placeholder="VD: 1.92TB, 4TB..."
+                      className="bg-white"
+                      value={selCapacity}
+                      onChange={e => setSelCapacity(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-500">Giao tiếp</label>

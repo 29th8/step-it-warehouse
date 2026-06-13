@@ -11,12 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
   getStorageFormFactors,
-  getCpuSeries,
-  getStorageCapacities
+  getCpuSeries
 } from "@/lib/product-options";
 
 interface CreateProductProps {
@@ -167,15 +165,17 @@ export function CreateProductModal({ onRefresh }: CreateProductProps) {
                   className="bg-white"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Phân loại phụ (Type)</label>
-                <Input
-                  placeholder="VD: NVME, DDR5, L3 Switch..."
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  className="bg-white"
-                />
-              </div>
+              {!["MEMORY", "STORAGE", "CPU"].includes(formData.category) && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Phân loại phụ (Type)</label>
+                  <Input
+                    placeholder="VD: L3 Switch, Fiber..."
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    className="bg-white"
+                  />
+                </div>
+              )}
             </div>
 
             {/* DYNAMIC ATTRIBUTES FORM */}
@@ -196,12 +196,12 @@ export function CreateProductModal({ onRefresh }: CreateProductProps) {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-slate-700">Capacity *</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, capacity: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="32GB" /></SelectTrigger>
-                      <SelectContent>
-                        {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      placeholder="VD: 32GB, 64GB, 128GB..."
+                      className="bg-white"
+                      value={formData.attributes.capacity || ""}
+                      onChange={(e) => setFormData({ ...formData, attributes: { ...formData.attributes, capacity: e.target.value } })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-slate-700">Speed ( MHz )</label>

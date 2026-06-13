@@ -101,7 +101,7 @@ export async function GET(req: Request) {
       if (vendor) whereClause.product.vendor = vendor;
 
       if (generation) whereClause.product.AND.push({ attributes: { path: ["generation"], equals: generation } });
-      if (capacity) whereClause.product.AND.push({ attributes: { path: ["capacity"], equals: capacity } });
+      if (capacity) whereClause.product.AND.push({ attributes: { path: ["capacity"], string_contains: capacity } });
       if (storageInterface) whereClause.product.AND.push({ attributes: { path: ["interface"], equals: storageInterface } });
       if (attrType) whereClause.product.AND.push({ attributes: { path: ["type"], equals: attrType } });
       if (series) whereClause.product.AND.push({ attributes: { path: ["series"], equals: series } });
@@ -111,19 +111,26 @@ export async function GET(req: Request) {
       }
     }
 
-    const assets = await prisma.asset.findMany({
-      where: whereClause,
-      include: {
-        product: true,
-        warehouse: true,
-        rack: true,
-        parent: {
-          include: { product: true }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-      take: limit ? parseInt(limit) : undefined,
-    });
+    const page = parseInt(searchParams.get("page") || "1");
+    const pageSize = parseInt(searchParams.get("pageSize") || "0"); // 0 = no pagination
+
+    const [assets, total] = await prisma.$transaction([
+      prisma.asset.findMany({
+        where: whereClause,
+        include: {
+          product: true, warehouse: true, rack: true,
+          parent: { include: { product: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: pageSize > 0 ? pageSize : (limit ? parseInt(limit) : undefined),
+        skip: pageSize > 0 ? (page - 1) * pageSize : 0,
+      }),
+      prisma.asset.count({ where: whereClause }),
+    ]);
+
+    if (pageSize > 0) {
+      return NextResponse.json({ data: assets, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+    }
     return NextResponse.json(assets);
 
   } catch (error) {

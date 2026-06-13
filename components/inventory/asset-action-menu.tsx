@@ -35,11 +35,12 @@ interface AssetDetail {
   serialNumber: string;
   status: string;
   notes?: string;
+  owner?: string | null;
   productId: string;
   warehouseId: string;
   rackId?: string | null;
   rackUnit?: number | null;
-  uHeight?: number; // Đã thêm
+  uHeight?: number;
   product?: Product;
   warehouse?: Warehouse;
   rack?: Rack;
@@ -59,11 +60,12 @@ interface FormDataState {
   serialNumber: string;
   status: string;
   notes: string;
+  owner: string;
   productId: string;
   warehouseId: string;
   rackId: string;
   rackUnit: string;
-  uHeight: string; // Đã thêm
+  uHeight: string;
 }
 
 export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
@@ -80,9 +82,11 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [productSearch, setProductSearch] = useState("");
+
   const [formData, setFormData] = useState<FormDataState>({
-    serialNumber: "", status: "", notes: "", productId: "",
-    warehouseId: "", rackId: "", rackUnit: "", uHeight: "1",
+    serialNumber: "", status: "", notes: "", owner: "",
+    productId: "", warehouseId: "", rackId: "", rackUnit: "", uHeight: "1",
   });
 
   const STATUS_LABELS: Record<string, string> = {
@@ -122,7 +126,9 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
     DELETE_RENTAL: "Xóa hợp đồng thuê",
     DELETE: "Xóa thiết bị",
     RESTORE: "Khôi phục thiết bị",
-    HARD_DELETE: "Xóa thiết bị vĩnh viễn"
+    HARD_DELETE: "Xóa thiết bị vĩnh viễn",
+    HANDOVER: "Bàn giao vật tư",
+    HANDOVER_RETURN: "Hoàn trả vật tư"
   };
 
   const getStatusColor = (status: string) => {
@@ -171,10 +177,12 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
       setWarehousesList(await parseList(warehousesRes));
       setRacksList(await parseList(racksRes));
 
+      setProductSearch("");
       setFormData({
         serialNumber: assetData.serialNumber || "",
         status: assetData.status || "IN_STOCK",
         notes: assetData.notes || "",
+        owner: assetData.owner || "",
         productId: assetData.productId || assetData.product?.id || "",
         warehouseId: assetData.warehouseId || assetData.warehouse?.id || "",
         rackId: assetData.rackId || assetData.rack?.id || "none",
@@ -303,6 +311,12 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                               </p>
                             </div>
                           </div>
+                          {detailData.owner && (
+                            <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
+                              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-1"><MonitorSpeaker className="w-3.5 h-3.5" /> Chủ sở hữu</p>
+                              <p className="font-semibold text-amber-800">{detailData.owner}</p>
+                            </div>
+                          )}
 
                           {/* Cảnh báo: Thuộc về Parent */}
                           {detailData.parent && (
@@ -473,6 +487,44 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                 ) : (
                   // ================= CHẾ ĐỘ SỬA (EDIT MODE) =================
                   <form onSubmit={handleSaveEdit} className="space-y-4 animate-in slide-in-from-right-4 duration-200">
+
+                    {/* SẢN PHẨM MODEL */}
+                    <div className="space-y-2 border p-4 rounded-lg bg-blue-50/30">
+                      <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-blue-500" /> Sản phẩm / Model
+                      </label>
+                      <Input
+                        placeholder="Tìm theo tên hoặc model number..."
+                        value={productSearch}
+                        onChange={e => setProductSearch(e.target.value)}
+                        className="bg-white mb-1"
+                      />
+                      <Select value={formData.productId} onValueChange={(v) => setFormData({ ...formData, productId: v })}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Chọn sản phẩm" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white max-h-[220px]">
+                          {productsList
+                            .filter(p => {
+                              if (!productSearch.trim()) return true;
+                              const q = productSearch.toLowerCase();
+                              return p.name.toLowerCase().includes(q);
+                            })
+                            .map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                <span className="font-medium">{p.name}</span>
+                                {p.category && <span className="text-xs text-slate-400 ml-1">[{p.category}]</span>}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {formData.productId && productsList.find(p => p.id === formData.productId) && (
+                        <p className="text-xs text-blue-600 font-medium mt-1">
+                          Đang chọn: {productsList.find(p => p.id === formData.productId)?.name}
+                        </p>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">Mã Serial (SN)</label>
@@ -496,6 +548,19 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
+
+                    {/* CHỦ SỞ HỮU */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                        <MonitorSpeaker className="w-4 h-4 text-amber-500" /> Chủ sở hữu (Owner)
+                      </label>
+                      <Input
+                        placeholder="VD: DevOps Team / Nguyễn Văn A"
+                        value={formData.owner}
+                        onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                        className="bg-white"
+                      />
                     </div>
 
                     <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">

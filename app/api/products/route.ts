@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     }
 
     if (generation) whereClause.AND.push({ attributes: { path: ["generation"], equals: generation } });
-    if (capacity) whereClause.AND.push({ attributes: { path: ["capacity"], equals: capacity } });
+    if (capacity) whereClause.AND.push({ attributes: { path: ["capacity"], string_contains: capacity } });
     if (storageInterface) whereClause.AND.push({ attributes: { path: ["interface"], equals: storageInterface } });
     if (series) whereClause.AND.push({ attributes: { path: ["series"], equals: series } });
     if (attrType) whereClause.AND.push({ attributes: { path: ["type"], equals: attrType } });

@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
   getCpuSeries
@@ -56,10 +55,13 @@ export default function AssemblyPage() {
   const [detachmentInfo, setDetachmentInfo] = useState<{ components: Asset[] } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State cho Di chuyển linh kiện
-  const [moveComponent, setMoveComponent] = useState<Asset | null>(null);
+  // State cho Di chuyển linh kiện (hỗ trợ nhiều)
+  const [moveComponents, setMoveComponents] = useState<Asset[]>([]);
   const [moveTargetId, setMoveTargetId] = useState<string>("");
   const [isMoving, setIsMoving] = useState(false);
+
+  // State checkbox chọn linh kiện theo từng group
+  const [selectedComponentIds, setSelectedComponentIds] = useState<Record<string, string[]>>({});
 
   // Warehouse list for filter dropdown
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -195,6 +197,31 @@ export default function AssemblyPage() {
   };
 
   // =============================================
+  // HELPERS CHECKBOX SELECTION
+  // =============================================
+  const toggleComponent = (parentId: string, compId: string) => {
+    setSelectedComponentIds(prev => {
+      const cur = prev[parentId] || [];
+      return {
+        ...prev,
+        [parentId]: cur.includes(compId) ? cur.filter(id => id !== compId) : [...cur, compId],
+      };
+    });
+  };
+
+  const toggleAllInGroup = (parentId: string, components: Asset[]) => {
+    setSelectedComponentIds(prev => {
+      const cur = prev[parentId] || [];
+      const allSelected = cur.length === components.length;
+      return { ...prev, [parentId]: allSelected ? [] : components.map(c => c.id) };
+    });
+  };
+
+  const clearGroupSelection = (parentId: string) => {
+    setSelectedComponentIds(prev => ({ ...prev, [parentId]: [] }));
+  };
+
+  // =============================================
   // HANDLERS LẮP / THÁO
   // =============================================
   const handleAttachBulk = async (e: React.FormEvent) => {
@@ -228,6 +255,7 @@ export default function AssemblyPage() {
       const result = await res.json();
       toast.success(result.data.message);
       setDetachmentInfo(null);
+      setSelectedComponentIds({});
       fetchData();
     } catch (error: any) { toast.error(error.message); }
     finally { setIsSubmitting(false); }
@@ -236,7 +264,19 @@ export default function AssemblyPage() {
   // =============================================
   // LỌC VÀ NHÓM DỮ LIỆU
   // =============================================
-  const parentAssets = useMemo(() => allAssets.filter(a => ['SERVER'].includes(a.product.category)), [allAssets]);
+  const [parentSearch, setParentSearch] = useState("");
+  const [configSearch, setConfigSearch] = useState("");
+
+  const parentAssets = useMemo(() => {
+    const servers = allAssets.filter(a => ['SERVER'].includes(a.product.category));
+    if (!parentSearch.trim()) return servers;
+    const q = parentSearch.toLowerCase();
+    return servers.filter(a =>
+      a.serialNumber.toLowerCase().includes(q) ||
+      a.product.name.toLowerCase().includes(q) ||
+      (a.owner?.toLowerCase().includes(q) ?? false)
+    );
+  }, [allAssets, parentSearch]);
 
   const groupedAttachedComponents: GroupedComponents = useMemo(() => {
     return allAssets.reduce((acc: GroupedComponents, asset: Asset) => {
@@ -268,19 +308,38 @@ export default function AssemblyPage() {
 
         {/* CỘT TRÁI: MÁY MẸ */}
         <div className="space-y-4">
-          <h2 className="font-bold text-lg flex items-center gap-2"><Server className="text-slate-500" /> Thiết bị lắp ráp</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg flex items-center gap-2"><Server className="text-slate-500" /> Thiết bị lắp ráp</h2>
+            <span className="text-xs text-slate-400">{parentAssets.length} thiết bị</span>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Tìm theo tên, Serial Number, chủ sở hữu..."
+              value={parentSearch}
+              onChange={e => setParentSearch(e.target.value)}
+              className="pl-9 bg-white"
+            />
+          </div>
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             <Table>
               <TableHeader className="bg-slate-50/70"><TableRow><TableHead>Thiết bị</TableHead><TableHead className="w-32 text-right">Hành động</TableHead></TableRow></TableHeader>
               <TableBody>
                 {loading ? <TableRow><TableCell colSpan={2} className="text-center h-24">Đang tải...</TableCell></TableRow>
-                  : parentAssets.length === 0 ? <TableRow><TableCell colSpan={2} className="text-center h-24 text-slate-400">Không có thiết bị nguyên chiếc nào.</TableCell></TableRow>
-                    : parentAssets.map(asset => (
-                      <TableRow key={asset.id}>
-                        <TableCell><p className="font-bold">{asset.product.name}</p><p className="font-mono text-xs text-slate-500">{asset.serialNumber}</p></TableCell>
-                        <TableCell className="text-right"><Button size="sm" onClick={() => handleOpenAssembleModal(asset)}><LinkIcon className="w-4 h-4 mr-2" /> Lắp ráp</Button></TableCell>
-                      </TableRow>
-                    ))}
+                  : parentAssets.length === 0 ? (
+                    <TableRow><TableCell colSpan={2} className="text-center h-24 text-slate-400">
+                      {parentSearch ? `Không tìm thấy "${parentSearch}"` : "Không có thiết bị nguyên chiếc nào."}
+                    </TableCell></TableRow>
+                  ) : parentAssets.map(asset => (
+                    <TableRow key={asset.id}>
+                      <TableCell>
+                        <p className="font-bold">{asset.product.name}</p>
+                        <p className="font-mono text-xs text-slate-500">{asset.serialNumber}</p>
+                        {asset.owner && <p className="text-xs text-slate-400 mt-0.5">{asset.owner}</p>}
+                      </TableCell>
+                      <TableCell className="text-right"><Button size="sm" onClick={() => handleOpenAssembleModal(asset)}><LinkIcon className="w-4 h-4 mr-2" /> Lắp ráp</Button></TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </div>
@@ -288,10 +347,50 @@ export default function AssemblyPage() {
 
         {/* CỘT PHẢI: ACCORDION GROUPED COMPONENTS */}
         <div className="space-y-4">
-          <h2 className="font-bold text-lg flex items-center gap-2"><Cpu className="text-slate-500" /> Cấu hình thiết bị hiện tại</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg flex items-center gap-2"><Cpu className="text-slate-500" /> Cấu hình thiết bị hiện tại</h2>
+            <span className="text-xs text-slate-400">
+              {Object.values(groupedAttachedComponents).filter(({ parentDetails, components }) => {
+                if (!configSearch.trim()) return true;
+                const q = configSearch.toLowerCase();
+                return parentDetails.product.name.toLowerCase().includes(q) ||
+                  parentDetails.serialNumber.toLowerCase().includes(q) ||
+                  components.some(c => c.product.name.toLowerCase().includes(q) || c.serialNumber.toLowerCase().includes(q));
+              }).length} thiết bị
+            </span>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Tìm theo tên server, Serial, hoặc tên linh kiện..."
+              value={configSearch}
+              onChange={e => setConfigSearch(e.target.value)}
+              className="pl-9 bg-white"
+            />
+          </div>
           <Accordion type="multiple" className="w-full space-y-3">
-            {Object.keys(groupedAttachedComponents).length === 0 && !loading ? <p className="text-slate-400 italic text-sm text-center pt-10">Chưa có thiết bị nào được lắp ráp linh kiện.</p> : null}
-            {Object.values(groupedAttachedComponents).map(({ parentDetails, components }) => (
+            {(() => {
+              const filtered = Object.values(groupedAttachedComponents).filter(({ parentDetails, components }) => {
+                if (!configSearch.trim()) return true;
+                const q = configSearch.toLowerCase();
+                return parentDetails.product.name.toLowerCase().includes(q) ||
+                  parentDetails.serialNumber.toLowerCase().includes(q) ||
+                  components.some(c => c.product.name.toLowerCase().includes(q) || c.serialNumber.toLowerCase().includes(q));
+              });
+              if (!loading && filtered.length === 0) {
+                return <p className="text-slate-400 italic text-sm text-center pt-10">
+                  {configSearch ? `Không tìm thấy "${configSearch}"` : "Chưa có thiết bị nào được lắp ráp linh kiện."}
+                </p>;
+              }
+              return null;
+            })()}
+            {Object.values(groupedAttachedComponents).filter(({ parentDetails, components }) => {
+              if (!configSearch.trim()) return true;
+              const q = configSearch.toLowerCase();
+              return parentDetails.product.name.toLowerCase().includes(q) ||
+                parentDetails.serialNumber.toLowerCase().includes(q) ||
+                components.some(c => c.product.name.toLowerCase().includes(q) || c.serialNumber.toLowerCase().includes(q));
+            }).map(({ parentDetails, components }) => (
               <AccordionItem key={parentDetails.id} value={parentDetails.id} className="bg-white border rounded-xl shadow-sm overflow-hidden">
                 <AccordionTrigger className="px-4 py-3 hover:bg-slate-50/70 font-bold text-base">
                   <div className="flex flex-col items-start text-left">
@@ -300,20 +399,79 @@ export default function AssemblyPage() {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="p-4 bg-slate-50/50 border-t">
-                  <div className="space-y-3">
-                    {components.map(comp => (
-                      <div key={comp.id} className="flex justify-between items-center bg-white p-2 rounded-md border">
-                        <div><p className="font-semibold text-sm">{comp.product.name}</p><p className="font-mono text-[11px] text-slate-500">{comp.serialNumber}</p></div>
-                        <div className="flex items-center gap-1">
-                          <Button size="xs" variant="ghost" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" onClick={() => { setMoveComponent(comp); setMoveTargetId(""); }}><ArrowRightLeft className="w-3 h-3 mr-1" /> Di chuyển</Button>
-                          <Button size="xs" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDetachmentInfo({ components: [comp] })}><Unlink className="w-3 h-3 mr-1.5" /> Tháo</Button>
+                  {(() => {
+                    const groupSel = selectedComponentIds[parentDetails.id] || [];
+                    const allSelected = groupSel.length === components.length && components.length > 0;
+                    const someSelected = groupSel.length > 0;
+                    const selectedComps = components.filter(c => groupSel.includes(c.id));
+                    return (
+                      <div className="space-y-3">
+                        {/* Header: chọn tất cả */}
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-500 select-none">
+                            <Checkbox
+                              checked={allSelected}
+                              onCheckedChange={() => toggleAllInGroup(parentDetails.id, components)}
+                            />
+                            {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                          </label>
+                          {someSelected && (
+                            <span className="text-xs text-blue-600 font-semibold">Đã chọn {groupSel.length}/{components.length}</span>
+                          )}
                         </div>
+
+                        {/* Danh sách linh kiện với checkbox */}
+                        {components.map(comp => {
+                          const isChecked = groupSel.includes(comp.id);
+                          return (
+                            <div key={comp.id} className={`flex justify-between items-center p-2 rounded-md border transition-all ${isChecked ? "bg-blue-50 border-blue-200" : "bg-white"}`}>
+                              <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                                <Checkbox
+                                  checked={isChecked}
+                                  onCheckedChange={() => toggleComponent(parentDetails.id, comp.id)}
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-sm truncate">{comp.product.name}</p>
+                                  <p className="font-mono text-[11px] text-slate-500">{comp.serialNumber}</p>
+                                </div>
+                              </label>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button size="xs" variant="ghost" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" onClick={() => { setMoveComponents([comp]); setMoveTargetId(""); }}><ArrowRightLeft className="w-3 h-3 mr-1" /> Di chuyển</Button>
+                                <Button size="xs" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDetachmentInfo({ components: [comp] })}><Unlink className="w-3 h-3 mr-1.5" /> Tháo</Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Bulk action bar khi có selection */}
+                        {someSelected && (
+                          <div className="flex items-center gap-2 pt-2 border-t border-blue-200 mt-2">
+                            <span className="text-xs text-slate-500 flex-1">{groupSel.length} linh kiện được chọn</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                              onClick={() => { setMoveComponents(selectedComps); setMoveTargetId(""); }}
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" /> Di chuyển ({groupSel.length})
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => { setDetachmentInfo({ components: selectedComps }); clearGroupSelection(parentDetails.id); }}
+                            >
+                              <Unlink className="w-3.5 h-3.5 mr-1.5" /> Tháo ({groupSel.length})
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Tháo tất cả */}
+                        <Button size="sm" variant="destructive" className="w-full mt-1 opacity-70 hover:opacity-100" onClick={() => setDetachmentInfo({ components })}>
+                          <Trash2 className="w-4 h-4 mr-2" /> Tháo rời toàn bộ ({components.length} linh kiện)
+                        </Button>
                       </div>
-                    ))}
-                    <Button size="sm" variant="destructive" className="w-full mt-4" onClick={() => setDetachmentInfo({ components })}>
-                      <Trash2 className="w-4 h-4 mr-2" /> Tháo rời toàn bộ ({components.length} linh kiện)
-                    </Button>
-                  </div>
+                    );
+                  })()}
                 </AccordionContent>
               </AccordionItem>
             ))}
@@ -386,13 +544,12 @@ export default function AssemblyPage() {
                         {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <Select value={selCapacity} onValueChange={setSelCapacity}>
-                      <SelectTrigger className="w-[120px] h-9 shrink-0 bg-purple-50/50 border-purple-200 text-purple-700 font-medium"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">-- Tất cả --</SelectItem>
-                        {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      placeholder="Dung lượng..."
+                      value={selCapacity}
+                      onChange={e => setSelCapacity(e.target.value)}
+                      className="w-[110px] h-9 shrink-0 bg-purple-50/50 border-purple-200 text-sm"
+                    />
                   </>
                 )}
 
@@ -406,13 +563,12 @@ export default function AssemblyPage() {
                         {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <Select value={selCapacity} onValueChange={setSelCapacity}>
-                      <SelectTrigger className="w-[120px] h-9 shrink-0 bg-orange-50/50 border-orange-200 text-orange-700 font-medium"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">-- Tất cả --</SelectItem>
-                        {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      placeholder="Dung lượng..."
+                      value={selCapacity}
+                      onChange={e => setSelCapacity(e.target.value)}
+                      className="w-[110px] h-9 shrink-0 bg-orange-50/50 border-orange-200 text-sm"
+                    />
                     <Select value={selInterface} onValueChange={setSelInterface}>
                       <SelectTrigger className="w-[120px] h-9 shrink-0 bg-orange-50/50 border-orange-200 text-orange-700 font-medium"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
                       <SelectContent>
@@ -518,20 +674,24 @@ export default function AssemblyPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DI CHUYỂN LINH KIỆN */}
-      <Dialog open={!!moveComponent} onOpenChange={(open) => !open && setMoveComponent(null)}>
+      {/* MODAL DI CHUYỂN LINH KIỆN (hỗ trợ nhiều) */}
+      <Dialog open={moveComponents.length > 0} onOpenChange={(open) => !open && setMoveComponents([])}>
         <DialogContent className="bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2">
               <ArrowRightLeft className="w-5 h-5 text-blue-600" />
-              Di chuyển linh kiện
+              Di chuyển {moveComponents.length > 1 ? `${moveComponents.length} linh kiện` : "linh kiện"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Info linh kiện */}
-            <div className="bg-slate-50 p-3 rounded-lg border">
-              <p className="text-sm font-bold text-slate-700">{moveComponent?.product.name}</p>
-              <p className="font-mono text-xs text-slate-500">SN: {moveComponent?.serialNumber}</p>
+            {/* Danh sách linh kiện được chọn */}
+            <div className="bg-slate-50 p-3 rounded-lg border space-y-2 max-h-40 overflow-y-auto">
+              {moveComponents.map(comp => (
+                <div key={comp.id}>
+                  <p className="text-sm font-bold text-slate-700">{comp.product.name}</p>
+                  <p className="font-mono text-xs text-slate-500">SN: {comp.serialNumber}</p>
+                </div>
+              ))}
             </div>
 
             {/* Chọn thiết bị đích */}
@@ -543,7 +703,7 @@ export default function AssemblyPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-white max-h-60">
                   {parentAssets
-                    .filter(a => a.id !== moveComponent?.parentId)
+                    .filter(a => moveComponents.every(c => c.parentId !== a.id))
                     .map(a => (
                       <SelectItem key={a.id} value={a.id}>
                         <div className="flex flex-col">
@@ -557,24 +717,25 @@ export default function AssemblyPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMoveComponent(null)}>Hủy</Button>
+            <Button type="button" variant="outline" onClick={() => setMoveComponents([])}>Hủy</Button>
             <Button
               type="button"
               disabled={!moveTargetId || isMoving}
               className="bg-blue-600 text-white"
               onClick={async () => {
-                if (!moveComponent || !moveTargetId) return;
+                if (moveComponents.length === 0 || !moveTargetId) return;
                 setIsMoving(true);
                 try {
                   const res = await fetch("/api/assets/move-component", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ componentId: moveComponent.id, targetAssetId: moveTargetId }),
+                    body: JSON.stringify({ componentIds: moveComponents.map(c => c.id), targetAssetId: moveTargetId }),
                   });
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.error);
                   toast.success(data.message);
-                  setMoveComponent(null);
+                  setMoveComponents([]);
+                  setSelectedComponentIds({});
                   fetchData();
                 } catch (error: any) {
                   toast.error(error.message || "Lỗi di chuyển linh kiện");
@@ -584,7 +745,7 @@ export default function AssemblyPage() {
               }}
             >
               {isMoving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
-              {isMoving ? "Đang xử lý..." : "Di chuyển"}
+              {isMoving ? "Đang xử lý..." : `Di chuyển${moveComponents.length > 1 ? ` (${moveComponents.length})` : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

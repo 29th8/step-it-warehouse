@@ -12,10 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Filter } from "lucide-react";
 import {
   getGenerations,
-  getCapacities,
   getStorageTypes,
   getStorageInterfaces,
-  getStorageFormFactors,
   getCpuSeries
 } from "@/lib/product-options";
 
@@ -138,13 +136,14 @@ export default function ProductListPage() {
                 {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={selCapacity} onValueChange={setSelCapacity}>
-              <SelectTrigger className="w-[140px] bg-blue-50/50"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">-- Tất cả --</SelectItem>
-                {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="relative w-[140px]">
+              <Input
+                placeholder="Dung lượng..."
+                value={selCapacity}
+                onChange={e => setSelCapacity(e.target.value)}
+                className="bg-blue-50/50 border-blue-200 h-9 text-sm"
+              />
+            </div>
           </>
         )}
 
@@ -157,13 +156,14 @@ export default function ProductListPage() {
                 {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={selCapacity} onValueChange={setSelCapacity}>
-              <SelectTrigger className="w-[140px] bg-emerald-50/50"><SelectValue placeholder="Dung lượng" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">-- Tất cả --</SelectItem>
-                {getCapacities().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="relative w-[140px]">
+              <Input
+                placeholder="Dung lượng..."
+                value={selCapacity}
+                onChange={e => setSelCapacity(e.target.value)}
+                className="bg-emerald-50/50 border-emerald-200 h-9 text-sm"
+              />
+            </div>
             <Select value={selInterface} onValueChange={setSelInterface}>
               <SelectTrigger className="w-[140px] bg-emerald-50/50"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
               <SelectContent>

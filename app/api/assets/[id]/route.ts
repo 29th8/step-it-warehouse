@@ -68,18 +68,25 @@ export async function PATCH(req: Request, props: Props) {
     const data = await req.json();
 
     const existingAsset = await prisma.asset.findUnique({
-      where: { id: assetId }
+      where: { id: assetId },
+      include: {
+        rentalContracts: { where: { status: "ACTIVE" }, select: { id: true } },
+        parent: { select: { id: true, status: true } },
+      },
     });
 
     if (!existingAsset) {
       return NextResponse.json({ error: "Không tìm thấy thiết bị." }, { status: 404 });
     }
 
+    const hasActiveRental = existingAsset.rentalContracts.length > 0;
+    const parentIsRented = existingAsset.parent?.status === "RENTED";
+
     // 1️⃣ FIELD-LEVEL ENTERPRISE PROTECTION
     const forbiddenFields: string[] = [];
 
-    // Rule a: RENTED ASSETS
-    if (existingAsset.status === "RENTED") {
+    // Rule a: Chỉ block khi có hợp đồng thuê đang active (không block linh kiện đơn chỉ mang status RENTED)
+    if (hasActiveRental) {
       forbiddenFields.push("warehouseId", "rackId", "rackUnit", "productId", "serialNumber", "status");
     }
 
@@ -88,11 +95,16 @@ export async function PATCH(req: Request, props: Props) {
       if (!forbiddenFields.includes("serialNumber")) forbiddenFields.push("serialNumber");
     }
 
-    // Rule c: COMPONENT ASSETS (Must follow parent)
+    // Rule c: COMPONENT ASSETS (Must follow parent location)
     if (existingAsset.parentId) {
       if (!forbiddenFields.includes("warehouseId")) forbiddenFields.push("warehouseId");
       if (!forbiddenFields.includes("rackId")) forbiddenFields.push("rackId");
       if (!forbiddenFields.includes("rackUnit")) forbiddenFields.push("rackUnit");
+    }
+
+    // Rule d: Linh kiện thuộc server đang cho thuê → không được đổi trạng thái
+    if (parentIsRented) {
+      if (!forbiddenFields.includes("status")) forbiddenFields.push("status");
     }
 
     // Execute Field-Level Validation
@@ -123,8 +135,11 @@ export async function PATCH(req: Request, props: Props) {
     }
 
     if (violatedFields.length > 0) {
+      let reason = "Chỉ được phép cập nhật thông tin vận hành (Ghi chú, v.v).";
+      if (hasActiveRental) reason = "Thiết bị đang có hợp đồng thuê active. Hãy kết thúc hợp đồng trước.";
+      if (parentIsRented && violatedFields.includes("Trạng thái")) reason = "Linh kiện đang gắn vào thiết bị mẹ đang cho thuê. Không thể thay đổi trạng thái.";
       return NextResponse.json({
-        error: `Thiết bị đang bị khóa chức năng thay đổi: ${violatedFields.join(", ")}. Chỉ được phép cập nhật thông tin vận hành (Ghi chú, v.v).`
+        error: `Không thể thay đổi: ${violatedFields.join(", ")}. ${reason}`
       }, { status: 400 });
     }
 
