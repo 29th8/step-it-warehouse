@@ -1,74 +1,73 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { subDays, startOfDay, format } from "date-fns";
 
 export async function GET() {
   try {
     const [inStockCount, deployedCount, maintenanceCount, faultyCount, rentedCount, alerts, categoryStats] = await Promise.all([
-      // 1. Đếm số lượng theo trạng thái
-      prisma.asset.count({ where: { status: "IN_STOCK" } }),
-      prisma.asset.count({ where: { status: "DEPLOYED" } }),
-      prisma.asset.count({ where: { status: "MAINTENANCE" } }),
-      prisma.asset.count({ where: { status: "FAULTY" } }),
-      prisma.asset.count({ where: { status: "RENTED" } }),
-
-      // 2. Lấy 5 thiết bị lỗi/bảo trì mới nhất để cảnh báo
+      prisma.asset.count({ where: { status: "IN_STOCK", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "DEPLOYED", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "MAINTENANCE", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "FAULTY", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "RENTED", deletedAt: null } }),
       prisma.asset.findMany({
-        where: {
-          status: { in: ["FAULTY", "MAINTENANCE"] }
-        },
-        include: {
-          product: true,
-          warehouse: true
-        },
+        where: { status: { in: ["FAULTY", "MAINTENANCE"] }, deletedAt: null },
+        include: { product: true, warehouse: true },
         orderBy: { updatedAt: "desc" },
         take: 5
       }),
-
-      // 3. Thống kê theo Danh mục (Category)
       prisma.product.findMany({
-        select: {
-          category: true,
-          _count: {
-            select: { assets: true }
-          }
-        }
+        select: { category: true, _count: { select: { assets: true } } }
       })
     ]);
 
-    // 4. Lấy hợp đồng cho thuê sắp hết hạn (<= 14 ngày hoặc đã qua hạn)
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const next14Days = new Date(now);
-    next14Days.setDate(next14Days.getDate() + 14);
-
+    // Hợp đồng sắp hết hạn
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const next14Days = new Date(now); next14Days.setDate(next14Days.getDate() + 14);
     const expiringRentals = await prisma.rentalContract.findMany({
-      where: {
-        status: 'ACTIVE',
-        endDate: { lte: next14Days }
-      },
-      include: {
-        asset: { include: { product: true } }
-      },
+      where: { status: 'ACTIVE', endDate: { lte: next14Days } },
+      include: { asset: { include: { product: true } } },
       orderBy: { endDate: 'asc' }
     });
 
-    // Xử lý dữ liệu categoryStats để nhóm lại
+    // Trend 7 ngày gần nhất (số thiết bị nhập kho mỗi ngày)
+    const trend7Days = await Promise.all(
+      Array.from({ length: 7 }, (_, i) => {
+        const day = startOfDay(subDays(now, 6 - i));
+        const nextDay = startOfDay(subDays(now, 5 - i));
+        return prisma.asset.count({
+          where: { createdAt: { gte: day, lt: nextDay }, deletedAt: null }
+        }).then(count => ({ date: format(day, 'dd/MM'), count }));
+      })
+    );
+
     const statsByCategory = categoryStats.reduce((acc: any, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr._count.assets;
       return acc;
     }, {});
 
+    const categoryChartData = Object.entries(statsByCategory).map(([name, value]) => ({ name, value }));
+
+    const statusChartData = [
+      { name: "Trong kho", value: inStockCount, color: "#22c55e" },
+      { name: "Đang dùng", value: deployedCount, color: "#3b82f6" },
+      { name: "Đang thuê", value: rentedCount, color: "#8b5cf6" },
+      { name: "Bảo trì", value: maintenanceCount, color: "#f59e0b" },
+      { name: "Hỏng", value: faultyCount, color: "#ef4444" },
+    ].filter(d => d.value > 0);
+
     return NextResponse.json({
       summary: {
-        inStock: inStockCount,
-        deployed: deployedCount,
-        maintenance: maintenanceCount,
-        faulty: faultyCount,
+        inStock: inStockCount, deployed: deployedCount,
+        maintenance: maintenanceCount, faulty: faultyCount,
         rented: rentedCount,
         total: inStockCount + deployedCount + maintenanceCount + faultyCount + rentedCount
       },
       alerts,
       statsByCategory,
+      categoryChartData,
+      statusChartData,
+      trend7Days,
       expiringRentals
     });
   } catch (error) {

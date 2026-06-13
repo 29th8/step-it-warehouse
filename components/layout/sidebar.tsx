@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Server, Layers,
   ChevronLeft, ChevronRight, Monitor, History,
-  MapPin, FileText, Users,
+  MapPin, FileText, Users, ClipboardList,
 } from "lucide-react";
 
 export function Sidebar() {
@@ -46,6 +46,7 @@ export function Sidebar() {
           { label: "Vị trí", href: "/warehouses", icon: MapPin },
           { label: "Lắp ráp", href: "/assembly", icon: Layers },
           { label: "Hợp đồng", href: "/rentals", icon: FileText },
+          { label: "Bàn giao", href: "/handovers", icon: ClipboardList },
           { label: "Tủ Rack", href: "/racks", icon: Server },
           { label: "Lịch sử hệ thống", href: "/history", icon: History },
           ...(isAdmin ? [{ label: "Tài khoản", href: "/users", icon: Users }] : []),

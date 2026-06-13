@@ -87,6 +87,7 @@ model Asset {
   components   Asset[]     @relation("AssetToComponent")
   rentalContracts RentalContract[]
   movements    StockMovement[]
+  handoverItems HandoverItem[]
 
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -125,31 +126,34 @@ enum MoveType {
   HARD_DELETE
   RENT
   RETURN
-  ASSEMBLE    // Lắp ráp vào thiết bị khác
-  DISASSEMBLE // Tháo rời
+  ASSEMBLE
+  DISASSEMBLE
   CREATE_USER
   UPDATE_USER
   DISABLE_USER
   ENABLE_USER
   DELETE_USER
   RESET_PASSWORD
-
   CREATE_PRODUCT
   UPDATE_PRODUCT
   DELETE_PRODUCT
-
   CREATE_WAREHOUSE
   UPDATE_WAREHOUSE
   DELETE_WAREHOUSE
-
   CREATE_RACK
   UPDATE_RACK
   DELETE_RACK
-
   CREATE_RENTAL
   UPDATE_RENTAL
   RETURN_RENTAL
   DELETE_RENTAL
+  HANDOVER        // Bàn giao vật tư cho bộ phận
+  HANDOVER_RETURN // Hoàn trả vật tư
+}
+
+enum HandoverStatus {
+  ACTIVE    // Đang mang đi
+  RETURNED  // Đã hoàn trả
 }
 
 enum AssetStatus {
@@ -173,6 +177,7 @@ model User {
   createdAt    DateTime @default(now())
   movements         StockMovement[] @relation("ActorUser")
   targetedMovements StockMovement[] @relation("TargetUser")
+  handovers         HandoverRecord[]
 }
 
 enum Role {
@@ -211,4 +216,40 @@ model RentalContract {
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+}
+
+// ==========================================
+// BIÊN BẢN BÀN GIAO VẬT TƯ
+// ==========================================
+model HandoverRecord {
+  id              String         @id @default(cuid())
+  code            String         @unique // Mã biên bản: BBG-YYYYMMDD-XXXX
+  recipientName   String         // Người nhận vật tư
+  department      String         // Bộ phận
+  purpose         String         // Mục đích sử dụng
+  supervisorName  String         // Người duyệt / Sếp ký
+  handoverDate    DateTime       @default(now())
+  expectedReturn  DateTime?      // Ngày dự kiến hoàn trả
+  returnedAt      DateTime?      // Ngày hoàn trả thực tế
+  status          HandoverStatus @default(ACTIVE)
+  note            String?        @db.Text
+
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  items           HandoverItem[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model HandoverItem {
+  id          String         @id @default(cuid())
+  handoverId  String
+  handover    HandoverRecord @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  assetId     String
+  asset       Asset          @relation(fields: [assetId], references: [id])
+  note        String?
 }
