@@ -61,24 +61,45 @@ export async function GET(req: Request) {
     const isComponent = searchParams.get("component");
     const tabFilter = searchParams.get("tabFilter"); // "main" | "component"
 
-    const MAIN_CATS = [ProductCategory.SERVER, ProductCategory.NETWORK];
-    const COMP_CATS = [ProductCategory.MEMORY, ProductCategory.STORAGE, ProductCategory.CPU, ProductCategory.GPU, ProductCategory.ACCESSORY];
-
     const whereClause: any = { deletedAt: null };
 
     // Component mode: only loose, in-stock parts (assembly screen)
     if (isComponent === "true") {
       whereClause.parentId = null;
       whereClause.status = "IN_STOCK";
-      if (!category) whereClause.product = { category: { in: COMP_CATS } };
+      if (!category) {
+        whereClause.product = {
+          OR: [
+            { category: ProductCategory.MEMORY },
+            { category: ProductCategory.STORAGE },
+            { category: ProductCategory.CPU },
+            { category: ProductCategory.GPU },
+            { category: ProductCategory.ACCESSORY },
+          ]
+        };
+      }
     }
 
-    // Tab filter: BE-side split for asset list pagination
+    // Tab filter: dùng OR thay vì in để tránh lỗi enum filter trên một số môi trường
     if (tabFilter && !category) {
-      if (!whereClause.product) whereClause.product = {};
-      whereClause.product.category = {
-        in: tabFilter === "main" ? MAIN_CATS : COMP_CATS
-      };
+      if (tabFilter === "main") {
+        whereClause.product = {
+          OR: [
+            { category: ProductCategory.SERVER },
+            { category: ProductCategory.NETWORK },
+          ]
+        };
+      } else if (tabFilter === "component") {
+        whereClause.product = {
+          OR: [
+            { category: ProductCategory.MEMORY },
+            { category: ProductCategory.STORAGE },
+            { category: ProductCategory.CPU },
+            { category: ProductCategory.GPU },
+            { category: ProductCategory.ACCESSORY },
+          ]
+        };
+      }
     }
 
     // Warehouse filter
