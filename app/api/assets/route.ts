@@ -59,18 +59,26 @@ export async function GET(req: Request) {
     const q = searchParams.get("search");
     const limit = searchParams.get("take");
     const isComponent = searchParams.get("component");
+    const tabFilter = searchParams.get("tabFilter"); // "main" | "component"
+
+    const MAIN_CATS = [ProductCategory.SERVER, ProductCategory.NETWORK];
+    const COMP_CATS = [ProductCategory.MEMORY, ProductCategory.STORAGE, ProductCategory.CPU, ProductCategory.GPU, ProductCategory.ACCESSORY];
 
     const whereClause: any = { deletedAt: null };
 
-    // Component mode: only loose, in-stock parts
+    // Component mode: only loose, in-stock parts (assembly screen)
     if (isComponent === "true") {
       whereClause.parentId = null;
       whereClause.status = "IN_STOCK";
-      if (!category) {
-        whereClause.product = {
-          category: { in: [ProductCategory.ACCESSORY, ProductCategory.MEMORY, ProductCategory.STORAGE, ProductCategory.CPU, ProductCategory.GPU,] }
-        };
-      }
+      if (!category) whereClause.product = { category: { in: COMP_CATS } };
+    }
+
+    // Tab filter: BE-side split for asset list pagination
+    if (tabFilter && !category) {
+      if (!whereClause.product) whereClause.product = {};
+      whereClause.product.category = {
+        in: tabFilter === "main" ? MAIN_CATS : COMP_CATS
+      };
     }
 
     // Warehouse filter
@@ -84,6 +92,12 @@ export async function GET(req: Request) {
         { product: { name: { contains: q, mode: "insensitive" } } },
         { product: { modelNumber: { contains: q, mode: "insensitive" } } }
       ];
+    }
+
+    // Status filter (chỉ apply khi user chọn cụ thể, không filter mặc định)
+    const statusFilter = searchParams.get("status");
+    if (statusFilter && statusFilter !== "ALL") {
+      whereClause.status = statusFilter;
     }
 
     // Owner filter
