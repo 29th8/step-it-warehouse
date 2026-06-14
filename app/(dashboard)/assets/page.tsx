@@ -22,21 +22,42 @@ import {
 const MAIN_CATEGORIES = ["SERVER", "NETWORK"];
 const COMP_CATEGORIES = ["COMPONENT", "ACCESSORY", "STORAGE", 'CPU', 'GPU', 'MEMORY'];
 
+const PAGE_SIZE = 50;
+
+function buildCommonParams(
+  selCategory: string, selVendor: string, searchQuery: string, ownerFilter: string,
+  filterStatus: string, selGeneration: string, selCapacity: string,
+  selAttrType: string, selInterface: string, selSeries: string
+) {
+  const params = new URLSearchParams();
+  if (selVendor) params.append("vendor", selVendor);
+  if (searchQuery) params.append("search", searchQuery);
+  if (ownerFilter) params.append("owner", ownerFilter);
+  if (filterStatus !== "ALL") params.append("status", filterStatus);
+  if (selCategory !== "ALL") params.append("category", selCategory);
+  if (selCategory === "MEMORY") {
+    if (selGeneration && selGeneration !== "none") params.append("generation", selGeneration);
+    if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
+  }
+  if (selCategory === "STORAGE") {
+    if (selAttrType && selAttrType !== "none") params.append("attrType", selAttrType);
+    if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
+    if (selInterface && selInterface !== "none") params.append("interface", selInterface);
+  }
+  if (selCategory === "CPU") {
+    if (selSeries && selSeries !== "none") params.append("series", selSeries);
+  }
+  params.append("pageSize", String(PAGE_SIZE));
+  return params;
+}
+
 export default function AssetListPage() {
   const router = useRouter();
-  const [allAssets, setAllAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const PAGE_SIZE = 50;
 
-  // States Lọc
+  // Filters
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("main");
-
-  // States Lọc Động Mới
   const [selCategory, setSelCategory] = useState<string>("ALL");
   const [selVendor, setSelVendor] = useState<string>("");
   const [selGeneration, setSelGeneration] = useState<string>("");
@@ -46,74 +67,79 @@ export default function AssetListPage() {
   const [selSeries, setSelSeries] = useState<string>("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
 
-  const fetchAssets = useCallback((p = page) => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (selCategory !== "ALL") params.append("category", selCategory);
-    if (selVendor) params.append("vendor", selVendor);
-    if (searchQuery) params.append("search", searchQuery);
-    if (ownerFilter) params.append("owner", ownerFilter);
-    if (selCategory === "MEMORY") {
-      if (selGeneration && selGeneration !== "none") params.append("generation", selGeneration);
-      if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
-    }
-    if (selCategory === "STORAGE") {
-      if (selAttrType && selAttrType !== "none") params.append("attrType", selAttrType);
-      if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
-      if (selInterface && selInterface !== "none") params.append("interface", selInterface);
-    }
-    if (selCategory === "CPU") {
-      if (selSeries && selSeries !== "none") params.append("series", selSeries);
-    }
+  // Main tab state
+  const [mainAssets, setMainAssets] = useState<any[]>([]);
+  const [mainTotal, setMainTotal] = useState(0);
+  const [mainTotalPages, setMainTotalPages] = useState(1);
+  const [mainPage, setMainPage] = useState(1);
+  const [mainLoading, setMainLoading] = useState(true);
+
+  // Component tab state
+  const [compAssets, setCompAssets] = useState<any[]>([]);
+  const [compTotal, setCompTotal] = useState(0);
+  const [compTotalPages, setCompTotalPages] = useState(1);
+  const [compPage, setCompPage] = useState(1);
+  const [compLoading, setCompLoading] = useState(true);
+
+  const commonArgs = [selCategory, selVendor, searchQuery, ownerFilter, filterStatus, selGeneration, selCapacity, selAttrType, selInterface, selSeries] as const;
+
+  const fetchMain = useCallback((p = 1) => {
+    setMainLoading(true);
+    const params = buildCommonParams(...commonArgs);
+    if (selCategory === "ALL") params.append("tabFilter", "main");
     params.append("page", String(p));
-    params.append("pageSize", String(PAGE_SIZE));
-
-    fetch(`/api/assets?${params.toString()}`)
-      .then(res => res.json())
-      .then(json => {
-        if (Array.isArray(json)) { setAllAssets(json); setTotal(json.length); setTotalPages(1); }
-        else { setAllAssets(json.data || []); setTotal(json.total || 0); setTotalPages(json.totalPages || 1); }
+    fetch(`/api/assets?${params}`)
+      .then(r => r.json())
+      .then(j => {
+        const isArr = Array.isArray(j);
+        setMainAssets(isArr ? j : j.data || []);
+        setMainTotal(isArr ? j.length : j.total || 0);
+        setMainTotalPages(isArr ? 1 : j.totalPages || 1);
       })
-      .catch(() => setAllAssets([]))
-      .finally(() => setLoading(false));
-  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery, ownerFilter, page]);
+      .catch(() => setMainAssets([]))
+      .finally(() => setMainLoading(false));
+  }, [...commonArgs]);
 
+  const fetchComp = useCallback((p = 1) => {
+    setCompLoading(true);
+    const params = buildCommonParams(...commonArgs);
+    if (selCategory === "ALL") params.append("tabFilter", "component");
+    params.append("page", String(p));
+    fetch(`/api/assets?${params}`)
+      .then(r => r.json())
+      .then(j => {
+        const isArr = Array.isArray(j);
+        setCompAssets(isArr ? j : j.data || []);
+        setCompTotal(isArr ? j.length : j.total || 0);
+        setCompTotalPages(isArr ? 1 : j.totalPages || 1);
+      })
+      .catch(() => setCompAssets([]))
+      .finally(() => setCompLoading(false));
+  }, [...commonArgs]);
+
+  // Reset pages + refetch both on filter change
   useEffect(() => {
-    const timer = setTimeout(() => { fetchAssets(1); setPage(1); }, 400);
-    return () => clearTimeout(timer);
-  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery, ownerFilter]);
+    const t = setTimeout(() => {
+      setMainPage(1); setCompPage(1);
+      fetchMain(1); fetchComp(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [...commonArgs]);
 
-  useEffect(() => { fetchAssets(page); }, [page]);
+  // Fetch only the current tab when its page changes
+  useEffect(() => { fetchMain(mainPage); }, [mainPage]);
+  useEffect(() => { fetchComp(compPage); }, [compPage]);
+
+  const refreshAll = () => { fetchMain(mainPage); fetchComp(compPage); };
 
   const onCategoryChange = (val: string) => {
     setSelCategory(val);
     setSelGeneration(""); setSelCapacity(""); setSelAttrType(""); setSelInterface(""); setSelSeries("");
-    setPage(1);
     if (COMP_CATEGORIES.includes(val)) setActiveTab("component");
     else if (MAIN_CATEGORIES.includes(val)) setActiveTab("main");
   };
 
-  // ==========================================
-  // LOGIC CROSS-FILTERING (CLIENT-SIDE)
-  // ==========================================
-
-  // Lấy dữ liệu đã trả về từ API (Đã bao gồm Server-side search & filter JSON attributes)
-  const activeAssets = allAssets.filter((asset) => asset.status !== "DISPOSED");
-
-  // Bước 2: Lọc theo TRẠNG THÁI (Status) Client-silde
-  const statusFilteredAssets = activeAssets.filter((asset) => {
-    if (filterStatus === "ALL") return true;
-    return asset.status === filterStatus;
-  });
-
-  // Bước 3: Phân mảng 2 TAB (Categories)
-  const mainAssets = statusFilteredAssets.filter((asset) =>
-    asset.product && MAIN_CATEGORIES.includes(asset.product.category)
-  );
-
-  const componentAssets = statusFilteredAssets.filter((asset) =>
-    asset.product && COMP_CATEGORIES.includes(asset.product.category)
-  );
+  const totalDisplayed = activeTab === "main" ? mainTotal : compTotal;
 
   return (
     <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
@@ -129,7 +155,7 @@ export default function AssetListPage() {
             Quản lý Thiết bị
           </h1>
           <p className="text-slate-500 font-medium ml-1 mt-1">
-            Đang hiển thị: <strong className="text-blue-600 text-base">{statusFilteredAssets.length}</strong> thiết bị.
+            Đang hiển thị: <strong className="text-blue-600 text-base">{totalDisplayed}</strong> thiết bị.
           </p>
         </div>
 
@@ -169,11 +195,11 @@ export default function AssetListPage() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => fetchAssets(page)}
-                disabled={loading}
+                onClick={refreshAll}
+                disabled={mainLoading || compLoading}
                 className="h-11 w-11 shrink-0 bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all"
               >
-                <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 text-slate-600 ${(mainLoading || compLoading) ? 'animate-spin' : ''}`} />
               </Button>
 
               <Button
@@ -187,7 +213,7 @@ export default function AssetListPage() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
-              <ImportAssetModal onRefresh={fetchAssets} />
+              <ImportAssetModal onRefresh={refreshAll} />
 
               <Button
                 variant="outline"
@@ -201,7 +227,7 @@ export default function AssetListPage() {
               <div className="w-[1px] h-6 bg-slate-200 mx-1 hidden sm:block"></div>
 
               <div className="shrink-0">
-                <CreateAssetModal onRefresh={fetchAssets} />
+                <CreateAssetModal onRefresh={refreshAll} />
               </div>
             </div>
           </div>
@@ -306,7 +332,7 @@ export default function AssetListPage() {
             <Server className="w-4 h-4 text-blue-600 hidden sm:block" />
             <span>Thiết bị</span>
             <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {mainAssets.length}
+              {mainTotal}
             </span>
           </TabsTrigger>
 
@@ -317,39 +343,47 @@ export default function AssetListPage() {
             <Cpu className="w-4 h-4 text-purple-600 hidden sm:block" />
             <span>Linh kiện</span>
             <span className="ml-2 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {componentAssets.length}
+              {compTotal}
             </span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="main" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <AssetTable data={mainAssets} loading={loading} onRefresh={fetchAssets} />
+            <AssetTable data={mainAssets} loading={mainLoading} onRefresh={refreshAll} />
           </div>
+          {mainTotalPages > 1 && (
+            <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
+              <p className="text-sm text-slate-500">Trang <strong>{mainPage}</strong> / {mainTotalPages} · Tổng <strong>{mainTotal}</strong></p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setMainPage(1)} disabled={mainPage === 1}>«</Button>
+                <Button variant="outline" size="sm" onClick={() => setMainPage(p => Math.max(1, p - 1))} disabled={mainPage === 1}>‹</Button>
+                <span className="text-sm font-medium px-2">{mainPage}</span>
+                <Button variant="outline" size="sm" onClick={() => setMainPage(p => Math.min(mainTotalPages, p + 1))} disabled={mainPage === mainTotalPages}>›</Button>
+                <Button variant="outline" size="sm" onClick={() => setMainPage(mainTotalPages)} disabled={mainPage === mainTotalPages}>»</Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="component" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <AssetTable data={componentAssets} loading={loading} onRefresh={fetchAssets} />
+            <AssetTable data={compAssets} loading={compLoading} onRefresh={refreshAll} />
           </div>
+          {compTotalPages > 1 && (
+            <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
+              <p className="text-sm text-slate-500">Trang <strong>{compPage}</strong> / {compTotalPages} · Tổng <strong>{compTotal}</strong></p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCompPage(1)} disabled={compPage === 1}>«</Button>
+                <Button variant="outline" size="sm" onClick={() => setCompPage(p => Math.max(1, p - 1))} disabled={compPage === 1}>‹</Button>
+                <span className="text-sm font-medium px-2">{compPage}</span>
+                <Button variant="outline" size="sm" onClick={() => setCompPage(p => Math.min(compTotalPages, p + 1))} disabled={compPage === compTotalPages}>›</Button>
+                <Button variant="outline" size="sm" onClick={() => setCompPage(compTotalPages)} disabled={compPage === compTotalPages}>»</Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
-
-      {/* PAGINATION */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm">
-          <p className="text-sm text-slate-500">
-            Trang <strong>{page}</strong> / {totalPages} &nbsp;·&nbsp; Tổng <strong>{total}</strong> thiết bị
-          </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1}>«</Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>‹ Trước</Button>
-            <span className="text-sm font-medium px-2">{page}</span>
-            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Sau ›</Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
