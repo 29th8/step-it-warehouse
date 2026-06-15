@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   ClipboardList, Plus, Search, RefreshCw, Printer,
-  CheckCircle2, Clock, Loader2, X, Trash2, Package
+  CheckCircle2, Clock, Loader2, X, Trash2, Package, Server
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,16 +148,61 @@ export default function HandoversPage() {
     return () => clearTimeout(t);
   }, [fetchRecords]);
 
-  // Search available assets
+  // Lấy linh kiện con khi chọn server
+  const fetchServerChildren = async (serverId: string): Promise<any[]> => {
+    try {
+      const res = await fetch(`/api/assets?parentId=${serverId}&pageSize=100&page=1`);
+      const json = await res.json();
+      return Array.isArray(json) ? json : json.data || [];
+    } catch { return []; }
+  };
+
+  // Xử lý khi chọn asset từ kết quả tìm kiếm
+  const handleSelectAsset = async (asset: any) => {
+    const isServer = asset.product?.category === "SERVER" || asset.product?.category === "NETWORK";
+    setAssetSearch("");
+    setAssetResults([]);
+
+    if (isServer) {
+      const children = await fetchServerChildren(asset.id);
+      const newItems = [asset, ...children].filter(a => !selectedAssets.find(s => s.id === a.id));
+      setSelectedAssets(prev => [...prev, ...newItems]);
+    } else {
+      if (!selectedAssets.find(s => s.id === asset.id)) {
+        setSelectedAssets(prev => [...prev, asset]);
+      }
+    }
+  };
+
+  // Xóa asset khỏi danh sách (nếu là server thì xóa cả con)
+  const handleRemoveAsset = (assetId: string) => {
+    setSelectedAssets(prev => {
+      const asset = prev.find(a => a.id === assetId);
+      const isServer = asset?.product?.category === "SERVER" || asset?.product?.category === "NETWORK";
+      if (isServer) {
+        // Xóa server và tất cả con của nó
+        return prev.filter(a => a.id !== assetId && a.parentId !== assetId);
+      }
+      return prev.filter(a => a.id !== assetId);
+    });
+  };
+
+  // Search available assets - không giới hạn status để tìm được cả server
   useEffect(() => {
     if (!assetSearch.trim()) { setAssetResults([]); return; }
     const t = setTimeout(async () => {
       setIsSearchingAsset(true);
       try {
-        const res = await fetch(`/api/assets?search=${encodeURIComponent(assetSearch)}&pageSize=20&page=1`);
+        const params = new URLSearchParams({
+          search: assetSearch.trim(),
+          pageSize: "30",
+          page: "1",
+        });
+        const res = await fetch(`/api/assets?${params}`);
         const json = await res.json();
         const list = Array.isArray(json) ? json : json.data || [];
-        setAssetResults(list.filter((a: any) => a.status === "IN_STOCK" && !selectedAssets.find(s => s.id === a.id)));
+        // Lọc ra những cái chưa được chọn (trừ linh kiện con của server đã chọn)
+        setAssetResults(list.filter((a: any) => !selectedAssets.find(s => s.id === a.id)));
       } catch { setAssetResults([]); }
       finally { setIsSearchingAsset(false); }
     }, 300);
@@ -341,57 +386,117 @@ export default function HandoversPage() {
               <div className="space-y-3 border-t pt-4">
                 <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                   <Package className="w-4 h-4 text-blue-500" /> Vật tư bàn giao *
+                  {selectedAssets.length > 0 && (
+                    <span className="ml-auto text-xs font-normal bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      Đã chọn {selectedAssets.length}
+                    </span>
+                  )}
                 </label>
+
+                {/* Ô tìm kiếm */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  {isSearchingAsset
+                    ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 animate-spin" />
+                    : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  }
                   <Input
-                    placeholder="Tìm thiết bị (Serial Number, tên)..."
+                    placeholder="Nhập Serial Number hoặc tên thiết bị..."
                     value={assetSearch}
                     onChange={e => setAssetSearch(e.target.value)}
                     className="pl-9 bg-white"
+                    autoComplete="off"
                   />
+                  {assetSearch && (
+                    <button type="button" onClick={() => { setAssetSearch(""); setAssetResults([]); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Kết quả tìm kiếm */}
-                {assetResults.length > 0 && (
-                  <div className="border rounded-lg divide-y max-h-40 overflow-y-auto shadow-sm">
-                    {assetResults.map(a => (
-                      <div key={a.id} className="flex justify-between items-center px-3 py-2 hover:bg-blue-50 cursor-pointer" onClick={() => {
-                        setSelectedAssets(prev => [...prev, a]);
-                        setAssetSearch("");
-                        setAssetResults([]);
-                      }}>
-                        <div>
-                          <p className="text-sm font-semibold">{a.product.name}</p>
-                          <p className="text-xs font-mono text-slate-500">{a.serialNumber}</p>
-                        </div>
-                        <Badge variant="outline" className="text-green-600 border-green-200 text-xs">Trong kho</Badge>
+                {assetSearch.trim() && !isSearchingAsset && (
+                  <div className="border rounded-lg overflow-hidden shadow-sm">
+                    {assetResults.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-slate-400 italic">
+                        Không tìm thấy thiết bị nào khớp với &quot;{assetSearch}&quot;
                       </div>
-                    ))}
+                    ) : (
+                      <div className="divide-y max-h-56 overflow-y-auto">
+                        {assetResults.map(a => {
+                          const isServer = a.product?.category === "SERVER" || a.product?.category === "NETWORK";
+                          return (
+                            <div key={a.id}
+                              className={`flex justify-between items-center px-3 py-2.5 cursor-pointer transition-colors ${isServer ? "hover:bg-blue-50 bg-blue-50/30" : "hover:bg-slate-50"}`}
+                              onClick={() => handleSelectAsset(a)}>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  {isServer && <Server className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
+                                  <p className="text-sm font-semibold text-slate-800 truncate">{a.product?.name}</p>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-xs font-mono text-blue-600">{a.serialNumber}</span>
+                                  {a.warehouse?.name && <span className="text-xs text-slate-400">· {a.warehouse.name}</span>}
+                                  {isServer && <span className="text-xs text-blue-500 font-medium">→ tự động thêm linh kiện</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 ml-3 shrink-0">
+                                <Badge variant="outline" className={`text-xs ${isServer ? "text-blue-600 border-blue-200 bg-blue-50" : "text-slate-500 border-slate-200"}`}>
+                                  {a.product?.category}
+                                </Badge>
+                                <Badge className={`text-xs ${a.status === "IN_STOCK" ? "bg-green-100 text-green-700 border-green-200" : "bg-orange-100 text-orange-700 border-orange-200"}`}>
+                                  {a.status === "IN_STOCK" ? "Trong kho" : a.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
-                {isSearchingAsset && <p className="text-xs text-slate-400 italic">Đang tìm...</p>}
 
                 {/* Danh sách đã chọn */}
-                {selectedAssets.length > 0 && (
+                {selectedAssets.length > 0 ? (
                   <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Đã chọn ({selectedAssets.length})</p>
-                    {selectedAssets.map(a => (
-                      <div key={a.id} className="flex justify-between items-center bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{a.product.name}</p>
-                          <p className="text-xs font-mono text-slate-500">{a.serialNumber}</p>
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" className="text-red-500 hover:bg-red-50 h-7 w-7 p-0"
-                          onClick={() => setSelectedAssets(prev => prev.filter(x => x.id !== a.id))}>
-                          <X className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    ))}
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Đã chọn ({selectedAssets.length} thiết bị)</p>
+                    <div className="border rounded-lg divide-y max-h-52 overflow-y-auto">
+                      {selectedAssets.map((a, idx) => {
+                        const isServer = a.product?.category === "SERVER" || a.product?.category === "NETWORK";
+                        const isChild = !!a.parentId;
+                        return (
+                          <div key={a.id} className={`flex justify-between items-center px-3 py-2 transition-colors ${isChild ? "pl-8 bg-slate-50/50 hover:bg-slate-100/50" : isServer ? "bg-blue-50/40 hover:bg-blue-50" : "hover:bg-slate-50/50"}`}>
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {isChild
+                                ? <span className="text-slate-300 shrink-0">└</span>
+                                : <span className="text-xs text-slate-400 w-5 shrink-0">{idx + 1}.</span>
+                              }
+                              {isServer && <Server className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
+                              <div className="min-w-0">
+                                <p className={`text-sm font-semibold truncate ${isChild ? "text-slate-600" : "text-slate-800"}`}>{a.product?.name}</p>
+                                <p className="text-xs font-mono text-slate-400">{a.serialNumber}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 ml-2 shrink-0">
+                              {isChild && <Badge variant="outline" className="text-xs text-slate-400 border-slate-200">Linh kiện</Badge>}
+                              {!isChild && (
+                                <Button type="button" variant="ghost" size="sm" className="text-red-400 hover:text-red-600 hover:bg-red-50 h-7 w-7 p-0"
+                                  onClick={() => handleRemoveAsset(a.id)}>
+                                  <X className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-                {selectedAssets.length === 0 && (
-                  <p className="text-sm text-slate-400 italic text-center py-3 border border-dashed rounded-lg">Chưa có vật tư nào được chọn</p>
+                ) : (
+                  !assetSearch && (
+                    <div className="text-sm text-slate-400 italic text-center py-4 border border-dashed rounded-lg">
+                      Chưa có vật tư nào được chọn — nhập để tìm kiếm
+                    </div>
+                  )
                 )}
               </div>
             </div>

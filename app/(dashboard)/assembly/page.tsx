@@ -420,28 +420,85 @@ export default function AssemblyPage() {
                           )}
                         </div>
 
-                        {/* Danh sách linh kiện với checkbox */}
-                        {components.map(comp => {
-                          const isChecked = groupSel.includes(comp.id);
-                          return (
-                            <div key={comp.id} className={`flex justify-between items-center p-2 rounded-md border transition-all ${isChecked ? "bg-blue-50 border-blue-200" : "bg-white"}`}>
-                              <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                                <Checkbox
-                                  checked={isChecked}
-                                  onCheckedChange={() => toggleComponent(parentDetails.id, comp.id)}
-                                />
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-sm truncate">{comp.product.name}</p>
-                                  <p className="font-mono text-[11px] text-slate-500">{comp.serialNumber}</p>
+                        {/* Danh sách linh kiện nhóm theo category */}
+                        {(() => {
+                          const CATEGORY_ORDER = ["CPU", "MEMORY", "STORAGE", "GPU", "NETWORK", "ACCESSORY"];
+                          const CATEGORY_LABELS: Record<string, string> = {
+                            CPU: "Vi xử lý (CPU)",
+                            MEMORY: "RAM",
+                            STORAGE: "Ổ cứng",
+                            GPU: "Card đồ họa",
+                            NETWORK: "Card mạng",
+                            ACCESSORY: "Phụ kiện",
+                          };
+                          const CATEGORY_COLORS: Record<string, string> = {
+                            CPU: "bg-blue-50 text-blue-700 border-blue-200",
+                            MEMORY: "bg-purple-50 text-purple-700 border-purple-200",
+                            STORAGE: "bg-orange-50 text-orange-700 border-orange-200",
+                            GPU: "bg-green-50 text-green-700 border-green-200",
+                            NETWORK: "bg-cyan-50 text-cyan-700 border-cyan-200",
+                            ACCESSORY: "bg-slate-50 text-slate-600 border-slate-200",
+                          };
+                          const grouped = components.reduce((acc: Record<string, Asset[]>, comp) => {
+                            const cat = comp.product.category || "OTHER";
+                            if (!acc[cat]) acc[cat] = [];
+                            acc[cat].push(comp);
+                            return acc;
+                          }, {});
+                          const sortedCats = [
+                            ...CATEGORY_ORDER.filter(c => grouped[c]),
+                            ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
+                          ];
+                          return sortedCats.map(cat => {
+                            const catComps = grouped[cat];
+                            const catIds = catComps.map(c => c.id);
+                            const allCatChecked = catIds.every(id => groupSel.includes(id));
+                            const someCatChecked = catIds.some(id => groupSel.includes(id));
+                            const toggleCat = () => {
+                              setSelectedComponentIds(prev => {
+                                const cur = prev[parentDetails.id] || [];
+                                if (allCatChecked) return { ...prev, [parentDetails.id]: cur.filter(id => !catIds.includes(id)) };
+                                return { ...prev, [parentDetails.id]: [...new Set([...cur, ...catIds])] };
+                              });
+                            };
+                            return (
+                              <div key={cat} className="space-y-1.5">
+                                <div className={`flex items-center gap-2 px-2 py-1 rounded-md border text-xs font-bold cursor-pointer select-none ${CATEGORY_COLORS[cat] || "bg-slate-50 text-slate-600 border-slate-200"}`} onClick={toggleCat}>
+                                  <Checkbox
+                                    checked={allCatChecked}
+                                    data-state={someCatChecked && !allCatChecked ? "indeterminate" : undefined}
+                                    onCheckedChange={toggleCat}
+                                    onClick={e => e.stopPropagation()}
+                                    className="border-current data-[state=indeterminate]:bg-current/30"
+                                  />
+                                  <span>{CATEGORY_LABELS[cat] || cat}</span>
+                                  <span className="ml-auto opacity-60">{catComps.length}</span>
                                 </div>
-                              </label>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <Button size="xs" variant="ghost" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" onClick={() => { setMoveComponents([comp]); setMoveTargetId(""); }}><ArrowRightLeft className="w-3 h-3 mr-1" /> Di chuyển</Button>
-                                <Button size="xs" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDetachmentInfo({ components: [comp] })}><Unlink className="w-3 h-3 mr-1.5" /> Tháo</Button>
+                                {catComps.map(comp => {
+                                  const isChecked = groupSel.includes(comp.id);
+                                  return (
+                                    <div key={comp.id} className={`flex justify-between items-center p-2 rounded-md border transition-all ml-1 ${isChecked ? "bg-blue-50 border-blue-200" : "bg-white"}`}>
+                                      <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onCheckedChange={() => toggleComponent(parentDetails.id, comp.id)}
+                                        />
+                                        <div className="min-w-0">
+                                          <p className="font-semibold text-sm truncate">{comp.product.name}</p>
+                                          <p className="font-mono text-[11px] text-slate-500">{comp.serialNumber}</p>
+                                        </div>
+                                      </label>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button size="xs" variant="ghost" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" onClick={() => { setMoveComponents([comp]); setMoveTargetId(""); }}><ArrowRightLeft className="w-3 h-3 mr-1" /> Di chuyển</Button>
+                                        <Button size="xs" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDetachmentInfo({ components: [comp] })}><Unlink className="w-3 h-3 mr-1.5" /> Tháo</Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
 
                         {/* Bulk action bar khi có selection */}
                         {someSelected && (
@@ -483,12 +540,14 @@ export default function AssemblyPage() {
           MODAL LẮP RÁP HÀNG LOẠT (NÂNG CẤP BỘ LỌC)
          ============================================= */}
       <Dialog open={isAssembleModalOpen} onOpenChange={setIsAssembleModalOpen}>
-        <DialogContent className="bg-white md:max-w-4xl">
-          <DialogHeader><DialogTitle className="text-xl">Lắp linh kiện vào: {selectedParent?.serialNumber}</DialogTitle></DialogHeader>
-          <form onSubmit={handleAttachBulk}>
+        <DialogContent className="bg-white md:max-w-4xl h-[85vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
+            <DialogTitle className="text-xl">Lắp linh kiện vào: {selectedParent?.serialNumber}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAttachBulk} className="flex flex-col flex-1 min-h-0">
 
             {/* FILTER TOOLBAR */}
-            <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg mb-4">
+            <div className="flex flex-col gap-3 p-3 mx-6 mt-4 bg-slate-50 border border-slate-200 rounded-lg mb-3 shrink-0">
               {/* Search */}
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -610,8 +669,8 @@ export default function AssemblyPage() {
             </div>
 
             {/* COMPONENT LIST + SELECTED */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
-              <div className="flex flex-col space-y-3 max-h-[50vh] overflow-y-auto pr-3 md:border-r md:pr-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-6 flex-1 min-h-0">
+              <div className="flex flex-col space-y-3 overflow-y-auto pr-3 md:border-r md:pr-6">
                 {isModalLoading ? <div className="flex justify-center items-center h-24"><Loader2 className="animate-spin text-blue-600" /></div>
                   : availableComponents.length === 0 ? <p className="text-slate-500 italic text-center py-4">Không có linh kiện nào phù hợp bộ lọc.</p>
                     : <>
@@ -645,7 +704,7 @@ export default function AssemblyPage() {
               </div>
 
               {/* RIGHT SIDE: SELECTED COMPONENTS */}
-              <div className="flex flex-col max-h-[50vh] overflow-y-auto pl-1 pr-2">
+              <div className="flex flex-col overflow-y-auto pl-1 pr-2">
                 <h3 className="font-bold text-slate-700 pb-2 border-b mb-3">Linh kiện đã chọn ({componentsToAttach.length})</h3>
                 <div className="space-y-3">
                   {componentsToAttach.length === 0 ? (
@@ -664,7 +723,7 @@ export default function AssemblyPage() {
                 </div>
               </div>
             </div>
-            <DialogFooter className="mt-4 border-t pt-4">
+            <DialogFooter className="px-6 py-4 border-t mt-2 shrink-0">
               <Button type="button" variant="outline" onClick={() => setIsAssembleModalOpen(false)}>Hủy</Button>
               <Button type="submit" disabled={isSubmitting || componentsToAttach.length === 0} className="bg-blue-600 text-white">
                 {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <LinkIcon className="mr-2" />} Lắp ráp ({componentsToAttach.length}) linh kiện

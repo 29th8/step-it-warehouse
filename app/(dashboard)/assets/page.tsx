@@ -185,7 +185,8 @@ export default function AssetListPage() {
                 <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
                   <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
                   <SelectItem value="IN_STOCK">Trong kho</SelectItem>
-                  <SelectItem value="DEPLOYED">Đang dùng</SelectItem>
+                  <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
+                  <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
                   <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
                   <SelectItem value="RENTED">Đang thuê</SelectItem>
                   <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>

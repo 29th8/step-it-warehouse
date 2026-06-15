@@ -160,11 +160,12 @@ enum AssetStatus {
   IN_STOCK      // Trong kho
   RESERVED      // Đã giữ/Tạm cấp/Đã claim chờ xuất (Enterprise specific)
   DEPLOYED      // Đang sử dụng
-  MAINTENANCE   // Đang bảo trì 
+  HANDED_OVER   // Đã bàn giao
+  MAINTENANCE   // Đang bảo trì
   FAULTY        // Lỗi / Hỏng
   DISPOSED      // Đã thanh lý
   RENTED        // Đang cho thuê
-  INSTALLED     // Đã lắp đặt tại site khách hàng (có thể là một bước sau RENTED) 
+  INSTALLED     // Đã lắp đặt tại site khách hàng (có thể là một bước sau RENTED)
 }
 
 model User {
@@ -246,10 +247,11 @@ model HandoverRecord {
 }
 
 model HandoverItem {
-  id          String         @id @default(cuid())
-  handoverId  String
-  handover    HandoverRecord @relation(fields: [handoverId], references: [id], onDelete: Cascade)
-  assetId     String
-  asset       Asset          @relation(fields: [assetId], references: [id])
-  note        String?
+  id            String         @id @default(cuid())
+  handoverId    String
+  handover      HandoverRecord @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  assetId       String
+  asset         Asset          @relation(fields: [assetId], references: [id])
+  note          String?
+  previousOwner String?        // Lưu owner cũ để khôi phục khi hoàn trả
 }

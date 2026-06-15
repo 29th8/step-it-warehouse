@@ -60,16 +60,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Thiếu thông tin bắt buộc" }, { status: 400 });
     }
 
-    // Validate assets đều IN_STOCK
+    // Validate assets
     const assets = await prisma.asset.findMany({
       where: { id: { in: assetIds }, deletedAt: null },
       include: { product: true }
     });
 
-    const notInStock = assets.filter(a => a.status !== "IN_STOCK");
-    if (notInStock.length > 0) {
+    // Cho phép:
+    // 1. Asset IN_STOCK (đang trong kho)
+    // 2. Asset có parentId mà server cha đang được bàn giao cùng (linh kiện trong server)
+    const assetIdSet = new Set(assetIds);
+    const notAllowed = assets.filter(a => {
+      if (a.status === "IN_STOCK") return false;
+      if (a.parentId && assetIdSet.has(a.parentId)) return false; // linh kiện của server trong danh sách
+      return true;
+    });
+    if (notAllowed.length > 0) {
       return NextResponse.json({
-        error: `Thiết bị không ở trạng thái Trong kho: ${notInStock.map(a => a.serialNumber).join(", ")}`
+        error: `Thiết bị không thể bàn giao (không ở trong kho và không thuộc server được chọn): ${notAllowed.map(a => a.serialNumber).join(", ")}`
       }, { status: 400 });
     }
 
@@ -93,20 +101,27 @@ export async function POST(req: Request) {
           note,
           userId: currentUser.id,
           items: {
-            create: assetIds.map((id: string) => ({ assetId: id }))
+            create: assetIds.map((id: string) => ({
+              assetId: id,
+              previousOwner: assets.find(a => a.id === id)?.owner ?? null
+            }))
           }
         },
         include: {
-          items: { include: { asset: { include: { product: true } } } }
+          user: { select: { name: true, username: true } },
+          items: {
+            include: {
+              asset: { include: { product: true, warehouse: true } }
+            }
+          }
         }
       });
 
-      // Cập nhật trạng thái assets → DEPLOYED + ghi log
+      // Cập nhật trạng thái assets + ghi log — tất cả → HANDED_OVER
       for (const assetId of assetIds) {
-        const asset = assets.find(a => a.id === assetId);
         await tx.asset.update({
           where: { id: assetId },
-          data: { status: "DEPLOYED", owner: `${department} - ${recipientName}` }
+          data: { status: "HANDED_OVER", owner: `${department} - ${recipientName}` }
         });
         await tx.stockMovement.create({
           data: {

@@ -93,6 +93,7 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
     IN_STOCK: "Trong kho",
     RESERVED: "Đã giữ",
     DEPLOYED: "Đang sử dụng",
+    HANDED_OVER: "Đã bàn giao",
     RENTED: "Đang cho thuê",
     MAINTENANCE: "Đang bảo trì",
     FAULTY: "Hỏng",
@@ -133,9 +134,10 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "DEPLOYED": return "bg-green-100 text-green-700 border-green-200";
+      case "DEPLOYED": return "bg-blue-100 text-blue-700 border-blue-200";
+      case "HANDED_OVER": return "bg-violet-100 text-violet-700 border-violet-200";
       case "IN_STOCK": return "bg-green-100 text-green-800 border-green-200";
-      case "RENTED": return "bg-blue-100 text-blue-800 border-blue-200";
+      case "RENTED": return "bg-cyan-100 text-cyan-800 border-cyan-200";
       case "FAULTY": return "bg-red-100 text-red-700 border-red-200";
       case "MAINTENANCE": return "bg-yellow-100 text-yellow-700 border-yellow-200";
       case "DISPOSED": return "bg-gray-100 text-gray-700 border-gray-200";
@@ -364,21 +366,54 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                         {(!detailData.parent) && (
                           <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                             <p className="text-xs font-bold text-slate-500 flex items-center gap-1.5 mb-3 uppercase tracking-wider"><Cpu className="w-3.5 h-3.5" /> Linh kiện gắn kèm ({detailData.components?.length || 0})</p>
-                            {detailData.components && detailData.components.length > 0 ? (
-                              <div className="space-y-2">
-                                {detailData.components.map(comp => (
-                                  <div key={comp.id} className="text-sm bg-white border rounded-md p-2 flex justify-between items-center shadow-sm">
-                                    <div>
-                                      <p className="font-bold text-slate-700">{comp.product?.name}</p>
-                                      <p className="text-xs font-mono text-slate-500 mt-0.5">SN: {comp.serialNumber}</p>
+                            {detailData.components && detailData.components.length > 0 ? (() => {
+                              const CAT_ORDER = ["CPU", "MEMORY", "STORAGE", "GPU", "NETWORK", "ACCESSORY"];
+                              const CAT_LABELS: Record<string, string> = {
+                                CPU: "Vi xử lý (CPU)", MEMORY: "RAM", STORAGE: "Ổ cứng",
+                                GPU: "Card đồ họa", NETWORK: "Card mạng", ACCESSORY: "Phụ kiện",
+                              };
+                              const CAT_COLORS: Record<string, string> = {
+                                CPU: "bg-blue-50 text-blue-700 border-blue-200",
+                                MEMORY: "bg-purple-50 text-purple-700 border-purple-200",
+                                STORAGE: "bg-orange-50 text-orange-700 border-orange-200",
+                                GPU: "bg-green-50 text-green-700 border-green-200",
+                                NETWORK: "bg-cyan-50 text-cyan-700 border-cyan-200",
+                                ACCESSORY: "bg-slate-100 text-slate-600 border-slate-200",
+                              };
+                              const grouped = detailData.components.reduce((acc: Record<string, AssetDetail[]>, comp) => {
+                                const cat = comp.product?.category || "OTHER";
+                                if (!acc[cat]) acc[cat] = [];
+                                acc[cat].push(comp);
+                                return acc;
+                              }, {});
+                              const sortedCats = [
+                                ...CAT_ORDER.filter(c => grouped[c]),
+                                ...Object.keys(grouped).filter(c => !CAT_ORDER.includes(c)),
+                              ];
+                              return (
+                                <div className="space-y-2.5">
+                                  {sortedCats.map(cat => (
+                                    <div key={cat} className="space-y-1">
+                                      <div className={`flex items-center gap-2 px-2 py-1 rounded border text-[11px] font-bold ${CAT_COLORS[cat] || "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                                        <span>{CAT_LABELS[cat] || cat}</span>
+                                        <span className="ml-auto opacity-60">{grouped[cat].length}</span>
+                                      </div>
+                                      {grouped[cat].map(comp => (
+                                        <div key={comp.id} className="text-sm bg-white border rounded-md p-2 flex justify-between items-center shadow-sm ml-1">
+                                          <div>
+                                            <p className="font-bold text-slate-700">{comp.product?.name}</p>
+                                            <p className="text-xs font-mono text-slate-500 mt-0.5">SN: {comp.serialNumber}</p>
+                                          </div>
+                                          <Badge variant="outline" className={`text-[10px] ${getStatusColor(comp.status)} border-transparent py-0`}>
+                                            {STATUS_LABELS[comp.status] || comp.status}
+                                          </Badge>
+                                        </div>
+                                      ))}
                                     </div>
-                                    <Badge variant="outline" className={`text-[10px] ${getStatusColor(comp.status)} border-transparent py-0`}>
-                                      {STATUS_LABELS[comp.status] || comp.status}
-                                    </Badge>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
+                                  ))}
+                                </div>
+                              );
+                            })() : (
                               <p className="text-sm text-slate-400 italic">Không có linh kiện nào.</p>
                             )}
                           </div>
@@ -540,7 +575,8 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                           <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-white">
                             <SelectItem value="IN_STOCK">Trong kho</SelectItem>
-                            <SelectItem value="DEPLOYED">Đang dùng</SelectItem>
+                            <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
+                            <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
                             <SelectItem value="MAINTENANCE">Đang bảo trì</SelectItem>
                             <SelectItem value="RENTED">Đang cho thuê</SelectItem>
                             <SelectItem value="FAULTY">Hỏng</SelectItem>

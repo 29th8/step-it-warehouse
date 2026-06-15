@@ -21,7 +21,7 @@ export async function POST(req: Request, props: Props) {
 
     const handover = await prisma.handoverRecord.findUnique({
       where: { id },
-      include: { items: true }
+      include: { items: true }  // items có previousOwner
     });
 
     if (!handover) return NextResponse.json({ error: "Không tìm thấy biên bản" }, { status: 404 });
@@ -36,7 +36,7 @@ export async function POST(req: Request, props: Props) {
       for (const item of handover.items) {
         await tx.asset.update({
           where: { id: item.assetId },
-          data: { status: "IN_STOCK" }
+          data: { status: "IN_STOCK", owner: item.previousOwner ?? null }
         });
         await tx.stockMovement.create({
           data: {

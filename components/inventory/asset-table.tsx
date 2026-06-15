@@ -26,6 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   IN_STOCK: "Trong kho",
   RESERVED: "Đã giữ",
   DEPLOYED: "Đang sử dụng",
+  HANDED_OVER: "Đã bàn giao",
   RENTED: "Đang cho thuê",
   MAINTENANCE: "Đang bảo trì",
   FAULTY: "Hỏng",
@@ -52,7 +53,8 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
       MAINTENANCE: "bg-yellow-100 text-yellow-800 border-yellow-200",
       FAULTY: "bg-red-100 text-red-800 border-red-200",
       DISPOSED: "bg-gray-100 text-gray-800 border-gray-200",
-      DEPLOYED: "bg-blue-100 text-blue-800 border-blue-200", // Defaulting to blue since it's deployed
+      DEPLOYED: "bg-blue-100 text-blue-800 border-blue-200",
+      HANDED_OVER: "bg-violet-100 text-violet-800 border-violet-200",
       RESERVED: "bg-yellow-100 text-yellow-800 border-yellow-200",
     };
     return variants[status] || "bg-gray-100";

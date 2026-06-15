@@ -106,6 +106,10 @@ export async function GET(req: Request) {
     const warehouseId = searchParams.get("warehouseId");
     if (warehouseId) whereClause.warehouseId = warehouseId;
 
+    // Parent filter (lấy linh kiện con của một server)
+    const parentId = searchParams.get("parentId");
+    if (parentId) whereClause.parentId = parentId;
+
     // Full-text search
     if (q) {
       whereClause.OR = [

@@ -45,7 +45,7 @@ export function Sidebar() {
           { label: "Thiết bị", href: "/assets", icon: Server },
           { label: "Vị trí", href: "/warehouses", icon: MapPin },
           { label: "Lắp ráp", href: "/assembly", icon: Layers },
-          { label: "Hợp đồng", href: "/rentals", icon: FileText },
+          // { label: "Hợp đồng", href: "/rentals", icon: FileText }, // Ẩn - không dùng tính năng cho thuê
           { label: "Bàn giao", href: "/handovers", icon: ClipboardList },
           { label: "Tủ Rack", href: "/racks", icon: Server },
           { label: "Lịch sử hệ thống", href: "/history", icon: History },
