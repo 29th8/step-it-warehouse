@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Loader2, Save, X, Server } from "lucide-react";
+import { Plus, Loader2, Save, X, Server, Layers } from "lucide-react";
 import { handleApiResponse } from "@/lib/api-handler";
 
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,8 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [warehousesList, setWarehousesList] = useState<BasicItem[]>([]);
   const [racksList, setRacksList] = useState<BasicItem[]>([]);
+  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: { name: string } }[]>([]);
+  const [parentSearch, setParentSearch] = useState("");
 
   // States bộ lọc tầng
   const [selCategory, setSelCategory] = useState<string>("");
@@ -118,6 +120,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     status: "IN_STOCK",
     owner: "",
     notes: "",
+    parentId: "",
   };
   const [formData, setFormData] = useState(initialForm);
 
@@ -137,14 +140,17 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
   const fetchCascadingData = async () => {
     setIsLoadingData(true);
     try {
-      const [catRes, wareRes, rackRes] = await Promise.all([
+      const [catRes, wareRes, rackRes, parentsRes] = await Promise.all([
         fetch("/api/products/taxonomy?field=category"),
         fetch("/api/warehouses"),
-        fetch("/api/racks")
+        fetch("/api/racks"),
+        fetch("/api/assets?tabFilter=main&pageSize=100&page=1")
       ]);
       setCategoriesList(await safeJson(catRes));
       setWarehousesList(await safeJson(wareRes));
       setRacksList(await safeJson(rackRes));
+      const pd = await parentsRes.json();
+      setParentsList(Array.isArray(pd) ? pd : pd.data || []);
     } catch (e) { toast.error("Lỗi kết nối."); }
     finally { setIsLoadingData(false); }
   };
@@ -216,6 +222,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
       setSelCategory(""); setSelType("");
       setSelGeneration(""); setSelCapacity(""); setSelAttrType(""); setSelInterface(""); setSelSeries(""); setSearchQuery("");
       setTypesList([]); setProductsList([]);
+      setParentSearch("");
       fetchCascadingData();
     }
   };
@@ -450,7 +457,16 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Trạng thái (Status)</label>
-                <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                <Select
+                  value={formData.status}
+                  onValueChange={(v) => {
+                    if (v === "IN_STOCK" && formData.parentId && formData.parentId !== "none") {
+                      toast.error("Không thể đặt 'Trong kho' khi thiết bị đang lắp vào server. Hãy bỏ chọn thiết bị cha trước.");
+                      return;
+                    }
+                    setFormData({ ...formData, status: v });
+                  }}
+                >
                   <SelectTrigger className="bg-white"><SelectValue placeholder="IN_STOCK" /></SelectTrigger>
                   <SelectContent className="bg-white">
                     <SelectItem value="IN_STOCK">Trong kho (IN_STOCK)</SelectItem>
@@ -468,6 +484,55 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                 onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
                 className="bg-white"
               />
+            </div>
+
+            {/* THIẾT BỊ CHA */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha <span className="text-xs text-slate-400 font-normal">(lắp ngay vào server)</span>
+              </label>
+              <Input
+                placeholder="Tìm server theo serial hoặc tên..."
+                value={parentSearch}
+                onChange={e => setParentSearch(e.target.value)}
+                className="bg-white h-8 text-sm"
+              />
+              <Select
+                value={formData.parentId}
+                onValueChange={v => setFormData({
+                  ...formData,
+                  parentId: v === "none" ? "" : v,
+                  status: v && v !== "none" ? "DEPLOYED" : formData.status,
+                })}
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="-- Không lắp vào server nào --" />
+                </SelectTrigger>
+                <SelectContent className="bg-white max-h-52">
+                  <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
+                  {parentsList
+                    .filter(p => {
+                      if (!parentSearch.trim()) return true;
+                      const q = parentSearch.toLowerCase();
+                      return p.serialNumber.toLowerCase().includes(q) ||
+                        (p.product?.name || "").toLowerCase().includes(q);
+                    })
+                    .map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
+                        <span className="text-slate-700">{p.product?.name}</span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {formData.parentId && formData.parentId !== "none" && (() => {
+                const p = parentsList.find(x => x.id === formData.parentId);
+                return p ? (
+                  <p className="text-xs text-blue-600">
+                    ✓ Sẽ lắp vào: <strong>{p.serialNumber}</strong> — {p.product?.name}
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">

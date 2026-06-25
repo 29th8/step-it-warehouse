@@ -239,6 +239,11 @@ export async function PATCH(req: Request, props: Props) {
     } else {
       updateData.rack = { disconnect: true };
     }
+    if (data.parentId) {
+      updateData.parent = { connect: { id: data.parentId } };
+    } else if (data.parentId === null) {
+      updateData.parent = { disconnect: true };
+    }
 
     // E. THỰC THI GIAO DỊCH
     const updatedAsset = await prisma.$transaction(async (tx) => {

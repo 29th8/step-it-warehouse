@@ -46,7 +46,17 @@ export async function GET() {
       return acc;
     }, {});
 
-    const categoryChartData = Object.entries(statsByCategory).map(([name, value]) => ({ name, value }));
+    const CATEGORY_VI: Record<string, string> = {
+      SERVER: "Máy chủ",
+      MEMORY: "RAM",
+      STORAGE: "Ổ cứng",
+      NETWORK: "Thiết bị mạng",
+      ACCESSORY: "Phụ kiện",
+    };
+    const categoryChartData = Object.entries(statsByCategory).map(([name, value]) => ({
+      name: CATEGORY_VI[name] || name,
+      value,
+    }));
 
     const statusChartData = [
       { name: "Trong kho", value: inStockCount, color: "#22c55e" },

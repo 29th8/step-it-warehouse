@@ -84,6 +84,11 @@ export default function AssetListPage() {
   const commonArgs = [selCategory, selVendor, searchQuery, ownerFilter, filterStatus, selGeneration, selCapacity, selAttrType, selInterface, selSeries] as const;
 
   const fetchMain = useCallback((p = 1) => {
+    // Nếu đang lọc category thuộc tab Linh kiện → main tab trống
+    if (COMP_CATEGORIES.includes(selCategory)) {
+      setMainAssets([]); setMainTotal(0); setMainTotalPages(1); setMainLoading(false);
+      return;
+    }
     setMainLoading(true);
     const params = buildCommonParams(...commonArgs);
     if (selCategory === "ALL") params.append("tabFilter", "main");
@@ -101,6 +106,11 @@ export default function AssetListPage() {
   }, [...commonArgs]);
 
   const fetchComp = useCallback((p = 1) => {
+    // Nếu đang lọc category thuộc tab Thiết bị → comp tab trống
+    if (MAIN_CATEGORIES.includes(selCategory)) {
+      setCompAssets([]); setCompTotal(0); setCompTotalPages(1); setCompLoading(false);
+      return;
+    }
     setCompLoading(true);
     const params = buildCommonParams(...commonArgs);
     if (selCategory === "ALL") params.append("tabFilter", "component");

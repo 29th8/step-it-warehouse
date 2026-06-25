@@ -12,8 +12,12 @@ export async function GET(req: Request, props: Props) {
             include: {
                 warehouse: true,
                 assets: {
+                    where: { parentId: null }, // chỉ lấy thiết bị nguyên chiếc
                     include: {
-                        product: true // Lấy tên sản phẩm để hiển thị
+                        product: true,
+                        components: {  // linh kiện gắn trong
+                            include: { product: true }
+                        }
                     }
                 }
             }

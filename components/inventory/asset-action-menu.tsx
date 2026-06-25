@@ -41,6 +41,7 @@ interface AssetDetail {
   rackId?: string | null;
   rackUnit?: number | null;
   uHeight?: number;
+  parentId?: string | null;
   product?: Product;
   warehouse?: Warehouse;
   rack?: Rack;
@@ -66,6 +67,7 @@ interface FormDataState {
   rackId: string;
   rackUnit: string;
   uHeight: string;
+  parentId: string; // "none" = không có cha
 }
 
 export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
@@ -83,10 +85,13 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
+  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: { name: string } }[]>([]);
+  const [parentSearch, setParentSearch] = useState("");
 
   const [formData, setFormData] = useState<FormDataState>({
     serialNumber: "", status: "", notes: "", owner: "",
     productId: "", warehouseId: "", rackId: "", rackUnit: "", uHeight: "1",
+    parentId: "none",
   });
 
   const STATUS_LABELS: Record<string, string> = {
@@ -162,11 +167,12 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
     setIsLoading(true);
 
     try {
-      const [assetRes, productsRes, warehousesRes, racksRes] = await Promise.all([
+      const [assetRes, productsRes, warehousesRes, racksRes, parentsRes] = await Promise.all([
         fetch(`/api/assets/${asset.id}`),
         fetch("/api/products"),
         fetch("/api/warehouses"),
-        fetch("/api/racks")
+        fetch("/api/racks"),
+        fetch("/api/assets?tabFilter=main&pageSize=100&page=1")
       ]);
 
       if (!assetRes.ok) throw new Error("Lỗi tải dữ liệu thiết bị");
@@ -178,8 +184,12 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
       setProductsList(await parseList(productsRes));
       setWarehousesList(await parseList(warehousesRes));
       setRacksList(await parseList(racksRes));
+      const parentsData = await parentsRes.json();
+      const parentItems = Array.isArray(parentsData) ? parentsData : parentsData.data || [];
+      setParentsList(parentItems.filter((p: any) => p.id !== asset.id));
 
       setProductSearch("");
+      setParentSearch("");
       setFormData({
         serialNumber: assetData.serialNumber || "",
         status: assetData.status || "IN_STOCK",
@@ -190,6 +200,7 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
         rackId: assetData.rackId || assetData.rack?.id || "none",
         rackUnit: assetData.rackUnit ? assetData.rackUnit.toString() : "",
         uHeight: assetData.uHeight ? assetData.uHeight.toString() : "1",
+        parentId: assetData.parentId || "none",
       });
 
     } catch (error) {
@@ -213,7 +224,8 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
           ...formData,
           rackId: formData.rackId === "none" || formData.rackId === "" ? null : formData.rackId,
           rackUnit: formData.rackUnit ? parseInt(formData.rackUnit) : null,
-          uHeight: parseInt(formData.uHeight) // Gửi dạng số lên server
+          uHeight: parseInt(formData.uHeight),
+          parentId: formData.parentId === "none" ? null : formData.parentId
         }),
       });
 
@@ -571,10 +583,21 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">Trạng thái</label>
-                        <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                        <Select
+                          value={formData.status}
+                          onValueChange={(v) => {
+                            if (v === "IN_STOCK" && formData.parentId && formData.parentId !== "none") {
+                              toast.error("Không thể đặt 'Trong kho' khi thiết bị đang lắp vào server. Hãy bỏ chọn thiết bị cha trước.");
+                              return;
+                            }
+                            setFormData({ ...formData, status: v });
+                          }}
+                        >
                           <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-white">
-                            <SelectItem value="IN_STOCK">Trong kho</SelectItem>
+                            <SelectItem value="IN_STOCK" disabled={!!(formData.parentId && formData.parentId !== "none")}>
+                              Trong kho {formData.parentId && formData.parentId !== "none" && "🚫"}
+                            </SelectItem>
                             <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
                             <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
                             <SelectItem value="MAINTENANCE">Đang bảo trì</SelectItem>
@@ -678,6 +701,52 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                             </Select>
                           </div>
                         </div>
+                      )}
+                    </div>
+
+                    {/* THIẾT BỊ CHA */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha (lắp ráp vào)
+                      </label>
+                      <Input
+                        placeholder="Tìm server theo serial hoặc tên..."
+                        value={parentSearch}
+                        onChange={e => setParentSearch(e.target.value)}
+                        className="bg-white h-8 text-sm"
+                      />
+                      <Select
+                        value={formData.parentId}
+                        onValueChange={v => setFormData({
+                          ...formData,
+                          parentId: v,
+                          status: v && v !== "none" ? "DEPLOYED" : formData.status,
+                        })}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="-- Không lắp vào server nào --" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white max-h-52">
+                          <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
+                          {parentsList
+                            .filter(p => {
+                              if (!parentSearch.trim()) return true;
+                              const q = parentSearch.toLowerCase();
+                              return p.serialNumber.toLowerCase().includes(q) ||
+                                p.product?.name.toLowerCase().includes(q);
+                            })
+                            .map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
+                                <span className="text-slate-700">{p.product?.name}</span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {formData.parentId !== "none" && (
+                        <p className="text-xs text-blue-600">
+                          ✓ Sẽ lắp vào: {parentsList.find(p => p.id === formData.parentId)?.serialNumber} — {parentsList.find(p => p.id === formData.parentId)?.product?.name}
+                        </p>
                       )}
                     </div>
 
