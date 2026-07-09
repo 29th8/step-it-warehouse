@@ -5,35 +5,124 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, Package, AlertTriangle, CheckCircle, Toolbox, CalendarClock, PackageCheck, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
-import { differenceInDays, format } from "date-fns";
+import { differenceInDays } from "date-fns";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from "recharts";
 
-export default function DashboardPage() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+type DashboardSummary = {
+  inStock: number;
+  deployed: number;
+  maintenance: number;
+  faulty: number;
+  rented: number;
+  total: number;
+};
 
-  useEffect(() => {
-    fetch("/api/dashboard")
-      .then(res => res.json())
-      .then(json => {
-        setData(json);
-        setLoading(false);
-        if (json.expiringRentals?.length > 0) {
+type ChartItem = {
+  name: string;
+  value: number;
+  color?: string;
+};
+
+type TrendItem = {
+  date: string;
+  count: number;
+};
+
+type DashboardAsset = {
+  id: string;
+  serialNumber: string;
+  status: string;
+  product?: { name?: string };
+};
+
+type DashboardRental = {
+  id: string;
+  customerName: string;
+  endDate: string;
+  asset?: { serialNumber?: string };
+};
+
+type DashboardData = {
+  summary: DashboardSummary;
+  alerts: DashboardAsset[];
+  categoryChartData: ChartItem[];
+  statusChartData: ChartItem[];
+  trend7Days: TrendItem[];
+  expiringRentals: DashboardRental[];
+};
+
+const emptyDashboardData: DashboardData = {
+  summary: {
+    inStock: 0,
+    deployed: 0,
+    maintenance: 0,
+    faulty: 0,
+    rented: 0,
+    total: 0,
+  },
+  alerts: [],
+  categoryChartData: [],
+  statusChartData: [],
+  trend7Days: [],
+  expiringRentals: [],
+};
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData>(emptyDashboardData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchDashboard = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/dashboard");
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Không thể tải dữ liệu dashboard");
+      }
+
+      const nextData: DashboardData = {
+        summary: { ...emptyDashboardData.summary, ...(json?.summary || {}) },
+        alerts: Array.isArray(json?.alerts) ? json.alerts : [],
+        categoryChartData: Array.isArray(json?.categoryChartData) ? json.categoryChartData : [],
+        statusChartData: Array.isArray(json?.statusChartData) ? json.statusChartData : [],
+        trend7Days: Array.isArray(json?.trend7Days) ? json.trend7Days : [],
+        expiringRentals: Array.isArray(json?.expiringRentals) ? json.expiringRentals : [],
+      };
+
+      setData(nextData);
+
+      if (nextData.expiringRentals.length > 0) {
           const today = new Date(); today.setHours(0, 0, 0, 0);
-          json.expiringRentals.slice(0, 3).forEach((c: any, i: number) => {
+          nextData.expiringRentals.slice(0, 3).forEach((c, i) => {
             const days = differenceInDays(new Date(c.endDate), today);
+            const serialNumber = c.asset?.serialNumber || "N/A";
             setTimeout(() => {
-              if (days < 0) toast.error(`Hợp đồng ${c.asset.serialNumber} đã HẾT HẠN!`);
-              else if (days === 0) toast.error(`Hợp đồng ${c.asset.serialNumber} hết hạn HÔM NAY!`);
-              else toast.warning(`Hợp đồng ${c.asset.serialNumber} hết hạn sau ${days} ngày.`);
+              if (days < 0) toast.error(`Hợp đồng ${serialNumber} đã HẾT HẠN!`);
+              else if (days === 0) toast.error(`Hợp đồng ${serialNumber} hết hạn HÔM NAY!`);
+              else toast.warning(`Hợp đồng ${serialNumber} hết hạn sau ${days} ngày.`);
             }, i * 400);
           });
-        }
-      });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể tải dữ liệu dashboard";
+      setError(message);
+      toast.error(message);
+      setData(emptyDashboardData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboard();
   }, []);
 
   if (loading) return (
@@ -63,6 +152,23 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hệ thống Kho IT - Step Co.</h1>
         <p className="text-slate-500 text-sm mt-1">Cập nhật thời gian thực từ hạ tầng kho thiết bị.</p>
       </div>
+
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-red-700">Không tải được dữ liệu dashboard</p>
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+            <button
+              onClick={fetchDashboard}
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Thử lại
+            </button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPI CARDS */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -102,7 +208,7 @@ export default function DashboardPage() {
               <BarChart data={trend7Days} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip formatter={(v: any) => [`${v} thiết bị`, "Nhập kho"]} />
+                <Tooltip formatter={(v: unknown) => [`${v} thiết bị`, "Nhập kho"]} />
                 <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -120,9 +226,9 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={statusChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
-                  {statusChartData.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
+                  {statusChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: any, name: any) => [`${v} thiết bị`, name]} />
+                <Tooltip formatter={(v, name) => [`${v} thiết bị`, name]} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -143,9 +249,9 @@ export default function DashboardPage() {
               <BarChart data={categoryChartData} layout="vertical" margin={{ top: 0, right: 10, left: 30, bottom: 0 }}>
                 <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={60} />
-                <Tooltip formatter={(v: any) => [`${v} thiết bị`]} />
+                <Tooltip formatter={(v: unknown) => [`${v} thiết bị`]} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {categoryChartData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  {categoryChartData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -164,10 +270,10 @@ export default function DashboardPage() {
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {alerts.length === 0 ? (
                 <p className="text-sm text-slate-500 italic">Không có sự cố nào.</p>
-              ) : alerts.map((asset: any) => (
+              ) : alerts.map((asset) => (
                 <div key={asset.id} className="flex items-center justify-between p-2.5 bg-red-50 rounded-lg border border-red-100">
                   <div>
-                    <p className="text-sm font-bold text-slate-800">{asset.product.name}</p>
+                    <p className="text-sm font-bold text-slate-800">{asset.product?.name || "N/A"}</p>
                     <p className="text-xs font-mono text-slate-500">{asset.serialNumber}</p>
                   </div>
                   <Badge className={asset.status === 'FAULTY' ? 'bg-red-600 text-xs' : 'bg-orange-500 text-xs'}>
@@ -191,13 +297,13 @@ export default function DashboardPage() {
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {!expiringRentals?.length ? (
                 <p className="text-sm text-slate-500 italic">Không có hợp đồng sắp hết hạn.</p>
-              ) : expiringRentals.map((c: any) => {
+              ) : expiringRentals.map((c) => {
                 const days = differenceInDays(new Date(c.endDate), new Date());
                 return (
                   <div key={c.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border">
                     <div>
                       <p className="text-sm font-bold truncate max-w-[140px]">{c.customerName}</p>
-                      <p className="text-xs font-mono text-slate-500">{c.asset.serialNumber}</p>
+                      <p className="text-xs font-mono text-slate-500">{c.asset?.serialNumber || "N/A"}</p>
                     </div>
                     <Badge className={`text-xs font-bold ${getRentalAlertColor(days)}`}>
                       {days < 0 ? 'Hết hạn' : `${days} ngày`}
