@@ -7,16 +7,35 @@ import { ProductSchema } from "@/lib/validations/product";
 
 type Props = { params: Promise<{ id: string }> };
 
+function serializeProduct(product: any) {
+  return {
+    ...product,
+    category: product.productCategory?.code || "",
+    categoryName: product.productCategory?.name || product.productCategory?.code || "",
+  };
+}
+
+async function findCategory(category: string) {
+  return prisma.productCategory.findFirst({
+    where: {
+      OR: [
+        { id: category },
+        { code: category.toUpperCase() },
+      ],
+    },
+  });
+}
+
 // GET CHI TIẾT
 export async function GET(req: Request, props: Props) {
   try {
     const { id } = await props.params;
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true } } }
+      include: { productCategory: true, _count: { select: { assets: true } } }
     });
     if (!product) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 });
-    return NextResponse.json(product);
+    return NextResponse.json(serializeProduct(product));
   } catch (error) {
     return NextResponse.json({ error: "Lỗi Server" }, { status: 500 });
   }
@@ -28,6 +47,10 @@ export async function PATCH(req: Request, props: Props) {
     const { id } = await props.params;
     const rawData = await req.json();
     const data = ProductSchema.parse(rawData);
+    const category = await findCategory(data.category);
+    if (!category) {
+      return NextResponse.json({ error: "Danh mục sản phẩm không tồn tại" }, { status: 400 });
+    }
 
     // Normalization: standardize type value
     const normalizedType = data.type ? data.type.toUpperCase() : null;
@@ -37,7 +60,7 @@ export async function PATCH(req: Request, props: Props) {
       data: {
         name: data.name,
         modelNumber: data.modelNumber,
-        category: data.category,
+        productCategory: { connect: { id: category.id } },
         type: normalizedType,
         vendor: data.vendor,
         description: data.description,
@@ -56,7 +79,7 @@ export async function PATCH(req: Request, props: Props) {
       });
     }
 
-    return NextResponse.json(updated);
+    return NextResponse.json(serializeProduct({ ...updated, productCategory: category }));
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       const zodError = error as any;
@@ -74,7 +97,7 @@ export async function DELETE(req: Request, props: Props) {
     // 1. Kiểm tra ràng buộc: Sản phẩm này có Asset nào đang dùng không?
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { _count: { select: { assets: true } } }
+      include: { productCategory: true, _count: { select: { assets: true } } }
     });
 
     if (!product) return NextResponse.json({ error: "Không tìm thấy sản phẩm" }, { status: 404 });

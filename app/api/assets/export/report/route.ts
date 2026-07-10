@@ -10,7 +10,7 @@ export async function GET(req: Request) {
                 status: { not: "DISPOSED" }, // Exclude disposed assets
             },
             include: {
-                product: true,
+                product: { include: { productCategory: true } },
                 warehouse: true,
                 rack: true,
                 parent: { select: { serialNumber: true } },
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
                 serialNumber: asset.serialNumber,
                 productModel: asset.product?.modelNumber || "N/A",
                 productName: asset.product?.name || "N/A",
-                productCategory: asset.product?.category || "N/A",
+                productCategory: asset.product?.productCategory?.name || asset.product?.productCategory?.code || "N/A",
                 status: asset.status,
                 warehouse: asset.warehouse?.name || "N/A",
                 rack: asset.rack?.name || "N/A",

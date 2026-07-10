@@ -79,6 +79,7 @@ export default function RackDetailPage() {
 
   const statusColors: Record<string, string> = {
     IN_STOCK: "bg-green-100 text-green-700 border-green-200",
+    INSTALLED: "bg-indigo-100 text-indigo-700 border-indigo-200",
     DEPLOYED: "bg-blue-100 text-blue-700 border-blue-200",
     RENTED: "bg-purple-100 text-purple-700 border-purple-200",
     MAINTENANCE: "bg-yellow-100 text-yellow-700 border-yellow-200",

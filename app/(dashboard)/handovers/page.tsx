@@ -128,6 +128,8 @@ export default function HandoversPage() {
   // Print + return state
   const [printRecord, setPrintRecord] = useState<any | null>(null);
   const [returnConfirmId, setReturnConfirmId] = useState<string | null>(null);
+
+  const isMainAsset = (asset: any) => asset?.product?.productCategory?.isMain === true;
   const [isReturning, setIsReturning] = useState(false);
 
   const fetchRecords = useCallback(async () => {
@@ -159,7 +161,7 @@ export default function HandoversPage() {
 
   // Xử lý khi chọn asset từ kết quả tìm kiếm
   const handleSelectAsset = async (asset: any) => {
-    const isServer = asset.product?.category === "SERVER" || asset.product?.category === "NETWORK";
+    const isServer = isMainAsset(asset);
     setAssetSearch("");
     setAssetResults([]);
 
@@ -178,7 +180,7 @@ export default function HandoversPage() {
   const handleRemoveAsset = (assetId: string) => {
     setSelectedAssets(prev => {
       const asset = prev.find(a => a.id === assetId);
-      const isServer = asset?.product?.category === "SERVER" || asset?.product?.category === "NETWORK";
+      const isServer = isMainAsset(asset);
       if (isServer) {
         // Xóa server và tất cả con của nó
         return prev.filter(a => a.id !== assetId && a.parentId !== assetId);
@@ -424,7 +426,7 @@ export default function HandoversPage() {
                     ) : (
                       <div className="divide-y max-h-56 overflow-y-auto">
                         {assetResults.map(a => {
-                          const isServer = a.product?.category === "SERVER" || a.product?.category === "NETWORK";
+                          const isServer = isMainAsset(a);
                           return (
                             <div key={a.id}
                               className={`flex justify-between items-center px-3 py-2.5 cursor-pointer transition-colors ${isServer ? "hover:bg-blue-50 bg-blue-50/30" : "hover:bg-slate-50"}`}
@@ -462,7 +464,7 @@ export default function HandoversPage() {
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Đã chọn ({selectedAssets.length} thiết bị)</p>
                     <div className="border rounded-lg divide-y max-h-52 overflow-y-auto">
                       {selectedAssets.map((a, idx) => {
-                        const isServer = a.product?.category === "SERVER" || a.product?.category === "NETWORK";
+                        const isServer = isMainAsset(a);
                         const isChild = !!a.parentId;
                         return (
                           <div key={a.id} className={`flex justify-between items-center px-3 py-2 transition-colors ${isChild ? "pl-8 bg-slate-50/50 hover:bg-slate-100/50" : isServer ? "bg-blue-50/40 hover:bg-blue-50" : "hover:bg-slate-50/50"}`}>

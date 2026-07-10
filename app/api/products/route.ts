@@ -5,6 +5,25 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { z } from "zod";
 import { ProductSchema } from "@/lib/validations/product";
 
+function serializeProduct(product: any) {
+  return {
+    ...product,
+    category: product.productCategory?.code || "",
+    categoryName: product.productCategory?.name || product.productCategory?.code || "",
+  };
+}
+
+async function findCategory(category: string) {
+  return prisma.productCategory.findFirst({
+    where: {
+      OR: [
+        { id: category },
+        { code: category.toUpperCase() },
+      ],
+    },
+  });
+}
+
 // GET: LẤY DANH SÁCH (Hỗ trợ Filter Taxonomy & Kèm số lượng Asset)
 export async function GET(request: Request) {
   try {
@@ -23,7 +42,14 @@ export async function GET(request: Request) {
 
     const whereClause: any = { AND: [] };
 
-    if (category) whereClause.category = category;
+    if (category) {
+      whereClause.productCategory = {
+        OR: [
+          { id: category },
+          { code: category.toUpperCase() },
+        ],
+      };
+    }
     if (type) whereClause.type = type;
 
     if (q) {
@@ -49,6 +75,7 @@ export async function GET(request: Request) {
     const products = await prisma.product.findMany({
       where: whereClause,
       include: {
+        productCategory: true,
         _count: {
           select: { assets: true } // Đếm số lượng tài sản thực tế trong kho
         }
@@ -56,7 +83,7 @@ export async function GET(request: Request) {
       take: limit ? parseInt(limit) : undefined,
       orderBy: { name: 'asc' } // Sắp xếp theo tên cho dễ tìm kiếm trên dropdown
     });
-    return NextResponse.json(products);
+    return NextResponse.json(products.map(serializeProduct));
   } catch (error) {
     return NextResponse.json({ error: "Lỗi tải danh mục sản phẩm" }, { status: 500 });
   }
@@ -67,6 +94,10 @@ export async function POST(req: Request) {
   try {
     const rawData = await req.json();
     const data = ProductSchema.parse(rawData); // Zod sẽ throw lỗi nếu không hợp lệ
+    const category = await findCategory(data.category);
+    if (!category) {
+      return NextResponse.json({ error: "Danh mục sản phẩm không tồn tại" }, { status: 400 });
+    }
 
     // Bắt lỗi trùng Model Number (nếu Model là unique trong schema của bạn)
     const existing = await prisma.product.findUnique({ where: { modelNumber: data.modelNumber } });
@@ -81,7 +112,7 @@ export async function POST(req: Request) {
       data: {
         name: data.name,
         modelNumber: data.modelNumber,
-        category: data.category,
+        productCategory: { connect: { id: category.id } },
         type: normalizedType,
         vendor: data.vendor,
         description: data.description,

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         const productMap = new Map(products.map(p => [p.modelNumber.toLowerCase(), p.id]));
         const warehouseMap = new Map(warehouses.map(w => [w.name.toLowerCase(), w.id]));
         const rackMap = new Map(racks.map(r => [`${r.name.toLowerCase()}-${r.warehouseId}`, r]));
-        const validStatuses = ["IN_STOCK", "DEPLOYED", "MAINTENANCE", "FAULTY"];
+        const validStatuses = ["IN_STOCK", "INSTALLED", "DEPLOYED", "MAINTENANCE", "FAULTY"];
 
         // 6. Preview & Validation Loop
         const validRows: any[] = [];
@@ -154,7 +154,7 @@ export async function POST(req: Request) {
 
             // E. Status Validation
             if (!validStatuses.includes(status)) {
-                errors.push(`Invalid Status: ${status}. Must be one of IN_STOCK, DEPLOYED, MAINTENANCE, FAULTY`);
+                errors.push(`Invalid Status: ${status}. Must be one of IN_STOCK, INSTALLED, DEPLOYED, MAINTENANCE, FAULTY`);
             }
 
             // F. Parent asset validation (Optional)

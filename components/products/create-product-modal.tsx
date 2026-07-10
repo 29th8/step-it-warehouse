@@ -16,12 +16,14 @@ import {
   getStorageFormFactors,
   getCpuSeries
 } from "@/lib/product-options";
+import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 
 interface CreateProductProps {
   onRefresh: () => void;
+  categories: ProductCategoryOption[];
 }
 
-export function CreateProductModal({ onRefresh }: CreateProductProps) {
+export function CreateProductModal({ onRefresh, categories }: CreateProductProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -142,13 +144,11 @@ export function CreateProductModal({ onRefresh }: CreateProductProps) {
                     <SelectValue placeholder="Chọn danh mục" />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
-                    <SelectItem value="SERVER">Máy chủ (SERVER)</SelectItem>
-                    <SelectItem value="MEMORY">RAM / Bộ nhớ (MEMORY)</SelectItem>
-                    <SelectItem value="STORAGE">Ổ Cứng (STORAGE)</SelectItem>
-                    <SelectItem value="CPU">Vi xử lý (CPU)</SelectItem>
-                    <SelectItem value="GPU">Card Đồ Họa (GPU)</SelectItem>
-                    <SelectItem value="NETWORK">Mạng (NETWORK)</SelectItem>
-                    <SelectItem value="ACCESSORY">Phụ kiện linh tinh (ACCESSORY)</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.code}>
+                        {category.name} ({category.code})
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

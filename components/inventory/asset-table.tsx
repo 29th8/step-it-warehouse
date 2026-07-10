@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Table,
   TableBody,
@@ -9,14 +9,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MoreHorizontal, Edit, Trash, Eye } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Server, Box } from "lucide-react";
 import { PrintLabelModal } from "./print-label-modal"; // Re-use từ GĐ7
@@ -25,6 +17,7 @@ import { AssetActionMenu } from "./asset-action-menu";
 const STATUS_LABELS: Record<string, string> = {
   IN_STOCK: "Trong kho",
   RESERVED: "Đã giữ",
+  INSTALLED: "Đã lắp trong server",
   DEPLOYED: "Đang sử dụng",
   HANDED_OVER: "Đã bàn giao",
   RENTED: "Đang cho thuê",
@@ -36,15 +29,18 @@ const STATUS_LABELS: Record<string, string> = {
 interface AssetTableProps {
   data: any[];
   loading?: boolean;
-}
-
-interface AssetTableProps {
-  data: any[];
-  loading?: boolean;
   onRefresh: () => void; // Thêm dòng này
 }
 
 export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
+  const [detailAsset, setDetailAsset] = useState<any | null>(null);
+  const [detailOpenToken, setDetailOpenToken] = useState(0);
+
+  const openRowDetail = (asset: any) => {
+    setDetailAsset(asset);
+    setDetailOpenToken((token) => token + 1);
+  };
+
   // Helper hiển thị màu sắc trạng thái
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
@@ -53,6 +49,7 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
       MAINTENANCE: "bg-yellow-100 text-yellow-800 border-yellow-200",
       FAULTY: "bg-red-100 text-red-800 border-red-200",
       DISPOSED: "bg-gray-100 text-gray-800 border-gray-200",
+      INSTALLED: "bg-indigo-100 text-indigo-800 border-indigo-200",
       DEPLOYED: "bg-blue-100 text-blue-800 border-blue-200",
       HANDED_OVER: "bg-violet-100 text-violet-800 border-violet-200",
       RESERVED: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -86,10 +83,19 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
             </TableRow>
           ) : (
             data.map((asset) => (
-              <TableRow key={asset.id} className="hover:bg-slate-50/50 transition-colors">
+              <TableRow
+                key={asset.id}
+                className="hover:bg-slate-50/50 transition-colors"
+              >
                 {/* 1. Serial Number */}
                 <TableCell className="font-mono font-bold text-blue-600">
-                  {asset.serialNumber}
+                  <button
+                    type="button"
+                    onClick={() => openRowDetail(asset)}
+                    className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-sm"
+                  >
+                    {asset.serialNumber}
+                  </button>
                 </TableCell>
 
                 {/* 2. Thông tin sản phẩm */}
@@ -149,6 +155,15 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
           )}
         </TableBody>
       </Table>
+      {detailAsset && (
+        <AssetActionMenu
+          asset={detailAsset}
+          onRefresh={onRefresh}
+          hideTrigger
+          openToken={detailOpenToken}
+          onDetailClose={() => setDetailAsset(null)}
+        />
+      )}
     </div>
   );
 }

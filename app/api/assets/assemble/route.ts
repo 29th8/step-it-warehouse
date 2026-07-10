@@ -65,7 +65,7 @@ export async function POST(req: Request) {
         where: { id: componentId },
         data: {
           parentId: parentAssetId, // Gắn vào máy mẹ
-          status: "DEPLOYED",        // Chuyển trạng thái sang "Đang sử dụng"
+          status: "INSTALLED",       // Linh kiện đã lắp trong server, vẫn theo tồn kho vật lý của server
           // Tự động cập nhật vị trí của linh kiện theo vị trí của máy mẹ
           warehouseId: parentAsset.warehouseId,
           rackId: parentAsset.rackId,

@@ -7,9 +7,10 @@ import { Package, Search, Server } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CreateProductModal } from "@/components/products/create-product-modal";
 import { ProductActionMenu } from "@/components/products/product-action-menu";
-import { PRODUCT_CATEGORY_LABELS } from "@/lib/labels";
+import { ProductCategoryManager, type ProductCategoryOption } from "@/components/products/product-category-manager";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter } from "lucide-react";
+import { toast } from "sonner";
 import {
   getGenerations,
   getStorageTypes,
@@ -20,7 +21,9 @@ import {
 export default function ProductListPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
 
   // Advanced Filter States
   const [selCategory, setSelCategory] = useState<string>("ALL");
@@ -32,9 +35,21 @@ export default function ProductListPage() {
   const [selSeries, setSelSeries] = useState<string>("");
   const [refreshTick, setRefreshTick] = useState(0);
 
+  const fetchCategories = async () => {
+    const res = await fetch("/api/product-categories");
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error || "Không thể tải danh mục");
+    setCategories(Array.isArray(json) ? json : json.data || []);
+  };
+
+  useEffect(() => {
+    fetchCategories().catch(() => setCategories([]));
+  }, []);
+
   useEffect(() => {
     const fetchProducts = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const params = new URLSearchParams();
         if (selCategory !== "ALL") params.append("category", selCategory);
@@ -59,7 +74,18 @@ export default function ProductListPage() {
         params.append("take", "50");
 
         const res = await fetch(`/api/products?${params.toString()}`);
-        setProducts(await res.json());
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.error || "Không thể tải danh sách sản phẩm");
+        }
+
+        const nextProducts = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+        setProducts(nextProducts);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Không thể tải danh sách sản phẩm";
+        setLoadError(message);
+        setProducts([]);
+        toast.error(message);
       } finally { setLoading(false); }
     };
 
@@ -80,11 +106,16 @@ export default function ProductListPage() {
     setRefreshTick(t => t + 1);
   };
 
-  const filteredProducts = products; // Already filtered globally by Server API
+  const refreshCategories = () => {
+    fetchCategories().catch(() => setCategories([]));
+    refreshList();
+  };
+
+  const filteredProducts = Array.isArray(products) ? products : []; // Already filtered globally by Server API
 
   const getCategoryBadge = (cat: string) => {
-    if (['SERVER', 'STORAGE'].includes(cat)) return "bg-blue-100 text-blue-700 border-blue-200";
-    if (['SWITCH', 'FIREWALL'].includes(cat)) return "bg-green-100 text-green-700 border-green-200";
+    const category = categories.find(c => c.code === cat);
+    if (category?.isMain) return "bg-blue-100 text-blue-700 border-blue-200";
     return "bg-purple-100 text-purple-700 border-purple-200";
   };
 
@@ -100,7 +131,8 @@ export default function ProductListPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input placeholder="Tìm tên, model..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
           </div>
-          <CreateProductModal onRefresh={refreshList} />
+          <ProductCategoryManager categories={categories} onRefresh={refreshCategories} />
+          <CreateProductModal categories={categories} onRefresh={refreshList} />
         </div>
       </div>
 
@@ -115,13 +147,11 @@ export default function ProductListPage() {
             <SelectTrigger className="bg-slate-50"><SelectValue placeholder="Danh mục" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Tất cả danh mục</SelectItem>
-              <SelectItem value="SERVER">Server</SelectItem>
-              <SelectItem value="MEMORY">Bộ nhớ (RAM)</SelectItem>
-              <SelectItem value="STORAGE">Lưu trữ (Storage)</SelectItem>
-              <SelectItem value="CPU">Vi xử lý (CPU)</SelectItem>
-              <SelectItem value="GPU">Card đồ họa (GPU)</SelectItem>
-              <SelectItem value="NETWORK">Mạng (Network)</SelectItem>
-              <SelectItem value="ACCESSORY">Phụ kiện</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.code}>
+                  {category.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -186,6 +216,11 @@ export default function ProductListPage() {
       </div>
 
       <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+        {loadError && (
+          <div className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </div>
+        )}
         <Table>
           <TableHeader className="bg-slate-50">
             <TableRow>
@@ -210,14 +245,14 @@ export default function ProductListPage() {
                         variant="outline"
                         className={getCategoryBadge(product.category)}
                       >
-                        {PRODUCT_CATEGORY_LABELS[product.category] || product.category}
+                        {product.categoryName || categories.find(c => c.code === product.category)?.name || product.category}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-slate-600 font-medium">{product.vendor}</TableCell>
                     <TableCell className="text-center">
                       <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 gap-1"><Server className="w-3 h-3" /> {product._count?.assets || 0}</Badge>
                     </TableCell>
-                    <TableCell className="text-right"><ProductActionMenu product={product} onRefresh={refreshList} /></TableCell>
+                    <TableCell className="text-right"><ProductActionMenu product={product} categories={categories} onRefresh={refreshList} /></TableCell>
                   </TableRow>
                 ))}
           </TableBody>

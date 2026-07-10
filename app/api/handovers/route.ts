@@ -4,6 +4,28 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { format } from "date-fns";
 
+function serializeAsset(asset: any): any {
+  return {
+    ...asset,
+    product: asset.product
+      ? {
+        ...asset.product,
+        category: asset.product.productCategory?.code || "",
+        categoryName: asset.product.productCategory?.name || asset.product.productCategory?.code || "",
+      }
+      : asset.product,
+  };
+}
+
+function serializeRecord(record: any): any {
+  return {
+    ...record,
+    items: Array.isArray(record.items)
+      ? record.items.map((item: any) => ({ ...item, asset: serializeAsset(item.asset) }))
+      : record.items,
+  };
+}
+
 // GET: Danh sách biên bản bàn giao
 export async function GET(req: Request) {
   try {
@@ -28,14 +50,14 @@ export async function GET(req: Request) {
         user: { select: { name: true, username: true } },
         items: {
           include: {
-            asset: { include: { product: true, warehouse: true } }
+            asset: { include: { product: { include: { productCategory: true } }, warehouse: true } }
           }
         }
       },
       orderBy: { createdAt: "desc" }
     });
 
-    return NextResponse.json(records);
+    return NextResponse.json(records.map(serializeRecord));
   } catch (error) {
     return NextResponse.json({ error: "Lỗi tải dữ liệu" }, { status: 500 });
   }
@@ -63,7 +85,7 @@ export async function POST(req: Request) {
     // Validate assets
     const assets = await prisma.asset.findMany({
       where: { id: { in: assetIds }, deletedAt: null },
-      include: { product: true }
+      include: { product: { include: { productCategory: true } } }
     });
 
     // Cho phép:
@@ -111,7 +133,7 @@ export async function POST(req: Request) {
           user: { select: { name: true, username: true } },
           items: {
             include: {
-              asset: { include: { product: true, warehouse: true } }
+              asset: { include: { product: { include: { productCategory: true } }, warehouse: true } }
             }
           }
         }
@@ -136,7 +158,7 @@ export async function POST(req: Request) {
       return handover;
     });
 
-    return NextResponse.json(record, { status: 201 });
+    return NextResponse.json(serializeRecord(record), { status: 201 });
   } catch (error: any) {
     console.error("Handover POST error:", error);
     return NextResponse.json({ error: error.message || "Lỗi hệ thống" }, { status: 500 });

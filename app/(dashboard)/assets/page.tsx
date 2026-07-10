@@ -18,9 +18,7 @@ import {
   getStorageInterfaces,
   getCpuSeries
 } from "@/lib/product-options";
-
-const MAIN_CATEGORIES = ["SERVER", "NETWORK"];
-const COMP_CATEGORIES = ["COMPONENT", "ACCESSORY", "STORAGE", 'CPU', 'GPU', 'MEMORY'];
+import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 
 const PAGE_SIZE = 50;
 
@@ -66,6 +64,7 @@ export default function AssetListPage() {
   const [selInterface, setSelInterface] = useState<string>("");
   const [selSeries, setSelSeries] = useState<string>("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
 
   // Main tab state
   const [mainAssets, setMainAssets] = useState<any[]>([]);
@@ -82,10 +81,20 @@ export default function AssetListPage() {
   const [compLoading, setCompLoading] = useState(true);
 
   const commonArgs = [selCategory, selVendor, searchQuery, ownerFilter, filterStatus, selGeneration, selCapacity, selAttrType, selInterface, selSeries] as const;
+  const selectedCategory = categories.find(c => c.code === selCategory);
+  const selectedIsMain = selectedCategory?.isMain === true;
+  const selectedIsComponent = selectedCategory?.isMain === false;
+
+  useEffect(() => {
+    fetch("/api/product-categories")
+      .then(res => res.json())
+      .then(json => setCategories(Array.isArray(json) ? json : json.data || []))
+      .catch(() => setCategories([]));
+  }, []);
 
   const fetchMain = useCallback((p = 1) => {
     // Nếu đang lọc category thuộc tab Linh kiện → main tab trống
-    if (COMP_CATEGORIES.includes(selCategory)) {
+    if (selectedIsComponent) {
       setMainAssets([]); setMainTotal(0); setMainTotalPages(1); setMainLoading(false);
       return;
     }
@@ -103,11 +112,11 @@ export default function AssetListPage() {
       })
       .catch(() => setMainAssets([]))
       .finally(() => setMainLoading(false));
-  }, [...commonArgs]);
+  }, [...commonArgs, selectedIsComponent]);
 
   const fetchComp = useCallback((p = 1) => {
     // Nếu đang lọc category thuộc tab Thiết bị → comp tab trống
-    if (MAIN_CATEGORIES.includes(selCategory)) {
+    if (selectedIsMain) {
       setCompAssets([]); setCompTotal(0); setCompTotalPages(1); setCompLoading(false);
       return;
     }
@@ -125,7 +134,7 @@ export default function AssetListPage() {
       })
       .catch(() => setCompAssets([]))
       .finally(() => setCompLoading(false));
-  }, [...commonArgs]);
+  }, [...commonArgs, selectedIsMain]);
 
   // Reset pages + refetch both on filter change
   useEffect(() => {
@@ -145,8 +154,9 @@ export default function AssetListPage() {
   const onCategoryChange = (val: string) => {
     setSelCategory(val);
     setSelGeneration(""); setSelCapacity(""); setSelAttrType(""); setSelInterface(""); setSelSeries("");
-    if (COMP_CATEGORIES.includes(val)) setActiveTab("component");
-    else if (MAIN_CATEGORIES.includes(val)) setActiveTab("main");
+    const category = categories.find(c => c.code === val);
+    if (category?.isMain === false) setActiveTab("component");
+    else if (category?.isMain === true) setActiveTab("main");
   };
 
   const totalDisplayed = activeTab === "main" ? mainTotal : compTotal;
@@ -194,12 +204,15 @@ export default function AssetListPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
                   <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-                  <SelectItem value="IN_STOCK">Trong kho</SelectItem>
+                  <SelectItem value="WAREHOUSE_STOCK">Trong kho vật lý</SelectItem>
+                  <SelectItem value="AVAILABLE_STOCK">Rời / khả dụng</SelectItem>
+                  <SelectItem value="INSTALLED">Đã lắp trong server</SelectItem>
                   <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
                   <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
                   <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
                   <SelectItem value="RENTED">Đang thuê</SelectItem>
                   <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>
+                  <SelectItem value="DISPOSED">Thanh lý</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -255,12 +268,11 @@ export default function AssetListPage() {
                 <SelectTrigger className="bg-slate-50 h-9 font-medium border-slate-300"><SelectValue placeholder="Chọn Category" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Tất cả danh mục</SelectItem>
-                  <SelectItem value="SERVER">Server</SelectItem>
-                  <SelectItem value="MEMORY">Bộ nhớ (RAM)</SelectItem>
-                  <SelectItem value="STORAGE">Lưu trữ (Storage)</SelectItem>
-                  <SelectItem value="CPU">Vi xử lý (CPU)</SelectItem>
-                  <SelectItem value="GPU">Card đồ họa (GPU)</SelectItem>
-                  <SelectItem value="NETWORK">Mạng (Network)</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.code}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

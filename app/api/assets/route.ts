@@ -2,8 +2,24 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { Prisma, ProductCategory } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { checkRackOverlap } from "@/lib/rack-utils"; // Đảm bảo bạn đã tạo file này
+
+function serializeAsset(asset: any): any {
+  const product = asset.product
+    ? {
+      ...asset.product,
+      category: asset.product.productCategory?.code || "",
+      categoryName: asset.product.productCategory?.name || asset.product.productCategory?.code || "",
+    }
+    : asset.product;
+
+  return {
+    ...asset,
+    product,
+    parent: asset.parent ? serializeAsset(asset.parent) : asset.parent,
+  };
+}
 
 export async function GET(req: Request) {
   try {
@@ -16,17 +32,15 @@ export async function GET(req: Request) {
           parentId: null,
           status: "IN_STOCK",
           product: {
-            category: {
-              notIn: [ProductCategory.SERVER, ProductCategory.NETWORK]
-            }
+            productCategory: { isMain: false }
           }
         },
         include: {
-          product: { select: { name: true } }
+          product: { include: { productCategory: true } }
         },
         orderBy: { product: { name: 'asc' } }
       });
-      return NextResponse.json(components);
+      return NextResponse.json(components.map(serializeAsset));
     }
 
     if (type === "available_for_rental") {
@@ -37,13 +51,13 @@ export async function GET(req: Request) {
           deletedAt: null
         },
         include: {
-          product: true
+          product: { include: { productCategory: true } }
         },
         orderBy: {
           product: { name: "asc" }
         }
       });
-      return NextResponse.json(assets);
+      return NextResponse.json(assets.map(serializeAsset));
     }
 
     // =============================================
@@ -67,38 +81,15 @@ export async function GET(req: Request) {
     if (isComponent === "true") {
       whereClause.parentId = null;
       whereClause.status = "IN_STOCK";
-      if (!category) {
-        whereClause.product = {
-          OR: [
-            { category: ProductCategory.MEMORY },
-            { category: ProductCategory.STORAGE },
-            { category: ProductCategory.CPU },
-            { category: ProductCategory.GPU },
-            { category: ProductCategory.ACCESSORY },
-          ]
-        };
-      }
+      if (!category) whereClause.product = { productCategory: { isMain: false } };
     }
 
     // Tab filter: dùng OR thay vì in để tránh lỗi enum filter trên một số môi trường
     if (tabFilter && !category) {
       if (tabFilter === "main") {
-        whereClause.product = {
-          OR: [
-            { category: ProductCategory.SERVER },
-            { category: ProductCategory.NETWORK },
-          ]
-        };
+        whereClause.product = { productCategory: { isMain: true } };
       } else if (tabFilter === "component") {
-        whereClause.product = {
-          OR: [
-            { category: ProductCategory.MEMORY },
-            { category: ProductCategory.STORAGE },
-            { category: ProductCategory.CPU },
-            { category: ProductCategory.GPU },
-            { category: ProductCategory.ACCESSORY },
-          ]
-        };
+        whereClause.product = { productCategory: { isMain: false } };
       }
     }
 
@@ -122,7 +113,21 @@ export async function GET(req: Request) {
     // Status filter (chỉ apply khi user chọn cụ thể, không filter mặc định)
     const statusFilter = searchParams.get("status");
     if (statusFilter && statusFilter !== "ALL") {
-      whereClause.status = statusFilter;
+      if (statusFilter === "WAREHOUSE_STOCK" || statusFilter === "IN_STOCK") {
+        if (!whereClause.AND) whereClause.AND = [];
+        whereClause.AND.push({
+          OR: [
+            { status: "IN_STOCK", parentId: null },
+            { status: "IN_STOCK", parent: { status: "IN_STOCK" } },
+            { status: "INSTALLED", parent: { status: "IN_STOCK" } },
+          ],
+        });
+      } else if (statusFilter === "AVAILABLE_STOCK") {
+        whereClause.status = "IN_STOCK";
+        whereClause.parentId = null;
+      } else {
+        whereClause.status = statusFilter;
+      }
     }
 
     // Owner filter
@@ -136,7 +141,11 @@ export async function GET(req: Request) {
       if (!whereClause.product) whereClause.product = {};
       if (!whereClause.product.AND) whereClause.product.AND = [];
 
-      if (category) whereClause.product.category = category;
+      if (category) {
+        whereClause.product.productCategory = {
+          OR: [{ id: category }, { code: category.toUpperCase() }],
+        };
+      }
       if (vendor) whereClause.product.vendor = vendor;
 
       if (generation) whereClause.product.AND.push({ attributes: { path: ["generation"], equals: generation } });
@@ -157,8 +166,8 @@ export async function GET(req: Request) {
       prisma.asset.findMany({
         where: whereClause,
         include: {
-          product: true, warehouse: true, rack: true,
-          parent: { include: { product: true } }
+          product: { include: { productCategory: true } }, warehouse: true, rack: true,
+          parent: { include: { product: { include: { productCategory: true } } } }
         },
         orderBy: { createdAt: "desc" },
         take: pageSize > 0 ? pageSize : (limit ? parseInt(limit) : undefined),
@@ -168,9 +177,9 @@ export async function GET(req: Request) {
     ]);
 
     if (pageSize > 0) {
-      return NextResponse.json({ data: assets, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+      return NextResponse.json({ data: assets.map(serializeAsset), total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
     }
-    return NextResponse.json(assets);
+    return NextResponse.json(assets.map(serializeAsset));
 
   } catch (error) {
     console.error("GET Assets Error:", error);
@@ -260,20 +269,52 @@ export async function POST(req: Request) {
     }
     // ------------------------------------------------------------------------
 
+    const selectedProduct = data.productId
+      ? await prisma.product.findUnique({
+        where: { id: data.productId },
+        include: { productCategory: true },
+      })
+      : null;
+
+    if (data.parentId && selectedProduct?.productCategory?.isMain === true) {
+      return NextResponse.json(
+        { error: "Thiết bị chính như server/switch/router không thể lắp vào thiết bị cha. Chỉ linh kiện mới được gắn vào server." },
+        { status: 400 }
+      );
+    }
+
+    let parentAsset: any = null;
+    if (data.parentId) {
+      parentAsset = await prisma.asset.findUnique({ where: { id: data.parentId } });
+      if (!parentAsset) {
+        return NextResponse.json({ error: "Không tìm thấy thiết bị cha." }, { status: 404 });
+      }
+      if (parentAsset.status === "RENTED") {
+        return NextResponse.json({ error: "Không thể lắp linh kiện vào thiết bị đang được thuê." }, { status: 400 });
+      }
+    }
+
     // 3. THỰC THI GIAO DỊCH TẠO ASSET
     const newAsset = await prisma.$transaction(async (tx) => {
       const createData: any = {
         serialNumber: cleanSN,
-        status: data.status || "IN_STOCK",
+        status: parentAsset ? "INSTALLED" : (data.status || "IN_STOCK"),
         uHeight: parseInt(data.uHeight || 1), // Lưu chiều cao U
       };
 
       if (data.notes) createData.notes = data.notes;
       if (data.owner !== undefined) createData.owner = data.owner || null;
       if (data.productId) createData.product = { connect: { id: data.productId } };
-      if (data.warehouseId) createData.warehouse = { connect: { id: data.warehouseId } };
+      if (parentAsset) {
+        createData.warehouse = { connect: { id: parentAsset.warehouseId } };
+      } else if (data.warehouseId) {
+        createData.warehouse = { connect: { id: data.warehouseId } };
+      }
 
-      if (data.rackId && data.rackId !== "none") {
+      if (parentAsset) {
+        if (parentAsset.rackId) createData.rack = { connect: { id: parentAsset.rackId } };
+        createData.rackUnit = parentAsset.rackUnit;
+      } else if (data.rackId && data.rackId !== "none") {
         createData.rack = { connect: { id: data.rackId } };
         if (data.rackUnit) {
           createData.rackUnit = parseInt(data.rackUnit);

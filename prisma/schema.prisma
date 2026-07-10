@@ -10,22 +10,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 1. Danh mục sản phẩm (Đã có từ GĐ1, thêm relation assets)
-enum ProductCategory {
-  SERVER
-  MEMORY
-  STORAGE
-  CPU
-  GPU
-  NETWORK
-  ACCESSORY
+// 1. Danh mục sản phẩm động
+model ProductCategory {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  isMain      Boolean   @default(false) // true: thiết bị chính, false: linh kiện/phụ kiện
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([code])
+  @@index([isMain])
 }
 
 model Product {
   id           String   @id @default(cuid())
   name         String
   modelNumber  String   @unique
-  category     ProductCategory   
+  categoryId   String
+  productCategory ProductCategory @relation(fields: [categoryId], references: [id])
   type         String?
   attributes   Json?
   vendor       String
@@ -33,8 +38,7 @@ model Product {
   description  String?
   createdAt    DateTime @default(now())
 
-  @@index([category])
-  @@index([category, type])
+  @@index([categoryId])
   @@index([vendor])
   @@index([modelNumber])
 }
@@ -97,6 +101,11 @@ model Asset {
   // Soft Delete fields
   deletedAt    DateTime?
   deletedById  String?
+  previousStatus     AssetStatus?
+  previousParentId   String?
+  previousWarehouseId String?
+  previousRackId     String?
+  previousRackUnit   Int?
 }
 
 model StockMovement {

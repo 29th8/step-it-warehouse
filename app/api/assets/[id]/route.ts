@@ -4,8 +4,27 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/route";
 // Giả định bạn đã tạo file này theo gợi ý của AI trước đó
 import { checkRackOverlap } from "@/lib/rack-utils";
+import { collectAssetTree, resolveRestoredStatus } from "@/lib/asset-tree";
 
 type Props = { params: Promise<{ id: string }> };
+
+function serializeAsset(asset: any): any {
+  if (!asset) return asset;
+  const product = asset.product
+    ? {
+      ...asset.product,
+      category: asset.product.productCategory?.code || "",
+      categoryName: asset.product.productCategory?.name || asset.product.productCategory?.code || "",
+    }
+    : asset.product;
+
+  return {
+    ...asset,
+    product,
+    parent: asset.parent ? serializeAsset(asset.parent) : asset.parent,
+    components: Array.isArray(asset.components) ? asset.components.map(serializeAsset) : asset.components,
+  };
+}
 
 // ============================================================================
 // 1. GET: LẤY CHI TIẾT KÈM LỊCH SỬ
@@ -18,11 +37,11 @@ export async function GET(req: Request, props: Props) {
     const asset = await prisma.asset.findUnique({
       where: { id: assetId },
       include: {
-        product: true,
+        product: { include: { productCategory: true } },
         warehouse: true,
         rack: true,
-        parent: { include: { product: true } },
-        components: { include: { product: true } },
+        parent: { include: { product: { include: { productCategory: true } } } },
+        components: { include: { product: { include: { productCategory: true } } } },
         rentalContracts: { orderBy: { createdAt: "desc" } },
         movements: {
           orderBy: { createdAt: "desc" },
@@ -35,7 +54,7 @@ export async function GET(req: Request, props: Props) {
       return NextResponse.json({ error: "Không tìm thấy thiết bị" }, { status: 404 });
     }
 
-    return NextResponse.json(asset);
+    return NextResponse.json(serializeAsset(asset));
   } catch (error) {
     console.error("GET Asset Detail Error:", error);
     return NextResponse.json({ error: "Lỗi tải dữ liệu" }, { status: 500 });
@@ -72,6 +91,7 @@ export async function PATCH(req: Request, props: Props) {
       include: {
         rentalContracts: { where: { status: "ACTIVE" }, select: { id: true } },
         parent: { select: { id: true, status: true } },
+        product: { include: { productCategory: true } },
       },
     });
 
@@ -81,6 +101,22 @@ export async function PATCH(req: Request, props: Props) {
 
     const hasActiveRental = existingAsset.rentalContracts.length > 0;
     const parentIsRented = existingAsset.parent?.status === "RENTED";
+    const targetProduct = data.productId && data.productId !== existingAsset.productId
+      ? await prisma.product.findUnique({
+        where: { id: data.productId },
+        include: { productCategory: true },
+      })
+      : existingAsset.product;
+    const targetProductIsMain = targetProduct?.productCategory?.isMain === true;
+    const targetHasParent = data.parentId && data.parentId !== "none";
+    const keepsExistingParent = data.parentId === undefined && existingAsset.parentId;
+
+    if (targetProductIsMain && (targetHasParent || keepsExistingParent)) {
+      return NextResponse.json(
+        { error: "Thiết bị chính như server/switch/router không thể lắp vào thiết bị cha. Chỉ linh kiện mới được gắn vào server." },
+        { status: 400 }
+      );
+    }
 
     // 1️⃣ FIELD-LEVEL ENTERPRISE PROTECTION
     const forbiddenFields: string[] = [];
@@ -147,10 +183,56 @@ export async function PATCH(req: Request, props: Props) {
     // MỚI: BẢO MẬT & VALIDATION ASSET LIFECYCLE (ENTERPRISE LOGIC)
     // ------------------------------------------------------------------------
     if (data.status && data.status !== existingAsset.status) {
+      if (existingAsset.status === "DISPOSED") {
+        const tree = await collectAssetTree(prisma, assetId);
+        if (tree.length === 0) {
+          return NextResponse.json({ error: "Không tìm thấy cây thiết bị để khôi phục." }, { status: 404 });
+        }
+
+        const restoredRootStatus = data.status || existingAsset.previousStatus || "IN_STOCK";
+        await prisma.$transaction(async (tx) => {
+          for (const node of tree) {
+            const restoredParentId = node.previousParentId ?? node.parentId ?? null;
+
+            await tx.asset.update({
+              where: { id: node.id },
+              data: {
+                status: node.id === assetId ? restoredRootStatus as any : resolveRestoredStatus(node, restoredParentId) as any,
+                deletedAt: null,
+                deletedById: null,
+                parentId: restoredParentId,
+                warehouseId: node.previousWarehouseId ?? node.warehouseId ?? undefined,
+                rackId: node.previousRackId ?? node.rackId ?? null,
+                rackUnit: node.previousRackUnit ?? node.rackUnit ?? null,
+                previousStatus: null,
+                previousParentId: null,
+                previousWarehouseId: null,
+                previousRackId: null,
+                previousRackUnit: null,
+              },
+            });
+
+            await tx.stockMovement.create({
+              data: {
+                type: "RESTORE",
+                note: node.id === assetId
+                  ? `Khôi phục thiết bị ${node.serialNumber} từ trạng thái thanh lý.`
+                  : `Khôi phục theo thiết bị cha ${existingAsset.serialNumber}.`,
+                asset: { connect: { id: node.id } },
+                user: { connect: { id: userId } }
+              },
+            });
+          }
+        });
+
+        return NextResponse.json({ message: "Đã khôi phục thiết bị và linh kiện con." });
+      }
+
       const allowedTransitions: Record<string, string[]> = {
-        "IN_STOCK": ["RESERVED", "DEPLOYED", "RENTED", "FAULTY", "MAINTENANCE", "DISPOSED"],
+        "IN_STOCK": ["RESERVED", "DEPLOYED", "INSTALLED", "RENTED", "FAULTY", "MAINTENANCE", "DISPOSED"],
         "RESERVED": ["DEPLOYED", "IN_STOCK"],
-        "DEPLOYED": ["MAINTENANCE", "FAULTY", "IN_STOCK"],
+        "DEPLOYED": ["MAINTENANCE", "FAULTY", "IN_STOCK", "INSTALLED", "DISPOSED"],
+        "INSTALLED": ["IN_STOCK", "MAINTENANCE", "FAULTY", "DISPOSED"],
         "MAINTENANCE": ["IN_STOCK", "FAULTY", "DISPOSED"],
         "RENTED": ["IN_STOCK", "FAULTY"], // RENTED is largely managed by Rental controller
         "FAULTY": ["MAINTENANCE", "DISPOSED"],
@@ -165,6 +247,44 @@ export async function PATCH(req: Request, props: Props) {
       }
     }
     // ------------------------------------------------------------------------
+
+    if (data.status === "DISPOSED" && existingAsset.status !== "DISPOSED") {
+      const tree = await collectAssetTree(prisma, assetId);
+      if (tree.length === 0) {
+        return NextResponse.json({ error: "Không tìm thấy cây thiết bị để thanh lý." }, { status: 404 });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        for (const node of tree) {
+          await tx.asset.update({
+            where: { id: node.id },
+            data: {
+              status: "DISPOSED",
+              deletedAt: null,
+              deletedById: null,
+              previousStatus: node.status as any,
+              previousParentId: node.parentId || null,
+              previousWarehouseId: node.warehouseId || null,
+              previousRackId: node.rackId || null,
+              previousRackUnit: node.rackUnit ?? null,
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              type: "TRANSFER",
+              note: node.id === assetId
+                ? `Thanh lý thiết bị ${node.serialNumber}.`
+                : `Thanh lý theo thiết bị cha ${existingAsset.serialNumber}.`,
+              asset: { connect: { id: node.id } },
+              user: { connect: { id: userId } }
+            },
+          });
+        }
+      });
+
+      return NextResponse.json({ message: "Đã thanh lý thiết bị và toàn bộ linh kiện con." });
+    }
 
     const locationChanged =
       existingAsset.rackId !== data.rackId ||
@@ -232,6 +352,14 @@ export async function PATCH(req: Request, props: Props) {
       rackUnit: data.rackUnit ? parseInt(data.rackUnit) : null,
     };
 
+    const attachesToParent = data.parentId && data.parentId !== "none";
+    const parentChanged = attachesToParent && data.parentId !== existingAsset.parentId;
+    if (attachesToParent && (parentChanged || updateData.status === "IN_STOCK" || updateData.status === "DEPLOYED")) {
+      updateData.status = "INSTALLED";
+    } else if ((data.parentId === null || data.parentId === "none") && existingAsset.parentId && existingAsset.status === "INSTALLED") {
+      updateData.status = "IN_STOCK";
+    }
+
     if (data.productId) updateData.product = { connect: { id: data.productId } };
     if (data.warehouseId) updateData.warehouse = { connect: { id: data.warehouseId } };
     if (data.rackId) {
@@ -239,9 +367,9 @@ export async function PATCH(req: Request, props: Props) {
     } else {
       updateData.rack = { disconnect: true };
     }
-    if (data.parentId) {
+    if (data.parentId && data.parentId !== "none") {
       updateData.parent = { connect: { id: data.parentId } };
-    } else if (data.parentId === null) {
+    } else if (data.parentId === null || data.parentId === "none") {
       updateData.parent = { disconnect: true };
     }
 
@@ -319,27 +447,38 @@ export async function DELETE(req: Request, props: Props) {
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.asset.update({
-        where: { id: assetId },
-        data: {
-          status: "DISPOSED",
-          deletedAt: new Date(),
-          deletedById: userId,
-          rack: { disconnect: true },
-          rackUnit: null,
-          parent: { disconnect: true } // Disconnect from parent if any
-        },
-      });
+    const tree = await collectAssetTree(prisma, assetId);
+    const now = new Date();
 
-      await tx.stockMovement.create({
-        data: {
-          type: "DELETE",
-          note: `Xóa mềm thiết bị khỏi hệ thống (Đưa vào Recycle Bin). SN: ${existingAsset.serialNumber}`,
-          asset: { connect: { id: assetId } },
-          user: { connect: { id: userId } }
-        },
-      });
+    await prisma.$transaction(async (tx) => {
+      for (const node of tree) {
+        await tx.asset.update({
+          where: { id: node.id },
+          data: {
+            status: "DISPOSED",
+            deletedAt: now,
+            deletedById: userId,
+            previousStatus: node.status as any,
+            previousParentId: node.parentId || null,
+            previousWarehouseId: node.warehouseId || null,
+            previousRackId: node.rackId || null,
+            previousRackUnit: node.rackUnit ?? null,
+            rackId: null,
+            rackUnit: null,
+          },
+        });
+
+        await tx.stockMovement.create({
+          data: {
+            type: "DELETE",
+            note: node.id === assetId
+              ? `Xóa mềm thiết bị khỏi hệ thống (Đưa vào Recycle Bin). SN: ${node.serialNumber}`
+              : `Xóa mềm theo thiết bị cha ${existingAsset.serialNumber}.`,
+            asset: { connect: { id: node.id } },
+            user: { connect: { id: userId } }
+          },
+        });
+      }
     });
 
     return NextResponse.json({ message: "Đã xóa (thanh lý) thiết bị thành công." });

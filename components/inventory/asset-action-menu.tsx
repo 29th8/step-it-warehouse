@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   MoreHorizontal, Trash, Eye, Loader2,
@@ -23,7 +23,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 // ==========================================
 
 interface Rack { id: string; name: string; warehouseId: string; }
-interface Product { id: string; name: string; category?: string; }
+interface Product {
+  id: string;
+  name: string;
+  category?: string;
+  productCategory?: { isMain?: boolean };
+}
 interface Warehouse { id: string; name: string; }
 interface StockMovement {
   id: string; type: string; note: string; createdAt: string;
@@ -55,6 +60,9 @@ interface AssetDetail {
 interface AssetActionMenuProps {
   asset: { id: string; serialNumber: string };
   onRefresh: () => void;
+  hideTrigger?: boolean;
+  openToken?: number;
+  onDetailClose?: () => void;
 }
 
 interface FormDataState {
@@ -70,7 +78,7 @@ interface FormDataState {
   parentId: string; // "none" = không có cha
 }
 
-export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
+export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openToken, onDetailClose }: AssetActionMenuProps) {
   // ================= STATE =================
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -93,10 +101,14 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
     productId: "", warehouseId: "", rackId: "", rackUnit: "", uHeight: "1",
     parentId: "none",
   });
+  const selectedEditProduct = productsList.find(p => p.id === formData.productId) || detailData?.product;
+  const selectedEditProductIsMain = selectedEditProduct?.productCategory?.isMain === true;
+  const selectedEditProductIsComponent = selectedEditProduct?.productCategory?.isMain === false;
 
   const STATUS_LABELS: Record<string, string> = {
     IN_STOCK: "Trong kho",
     RESERVED: "Đã giữ",
+    INSTALLED: "Đã lắp trong server",
     DEPLOYED: "Đang sử dụng",
     HANDED_OVER: "Đã bàn giao",
     RENTED: "Đang cho thuê",
@@ -140,6 +152,7 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "DEPLOYED": return "bg-blue-100 text-blue-700 border-blue-200";
+      case "INSTALLED": return "bg-indigo-100 text-indigo-700 border-indigo-200";
       case "HANDED_OVER": return "bg-violet-100 text-violet-700 border-violet-200";
       case "IN_STOCK": return "bg-green-100 text-green-800 border-green-200";
       case "RENTED": return "bg-cyan-100 text-cyan-800 border-cyan-200";
@@ -225,7 +238,7 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
           rackId: formData.rackId === "none" || formData.rackId === "" ? null : formData.rackId,
           rackUnit: formData.rackUnit ? parseInt(formData.rackUnit) : null,
           uHeight: parseInt(formData.uHeight),
-          parentId: formData.parentId === "none" ? null : formData.parentId
+          parentId: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.parentId
         }),
       });
 
@@ -255,26 +268,35 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
     }
   };
 
+  useEffect(() => {
+    if (openToken !== undefined) {
+      handleOpenDetail();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openToken]);
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100">
-            <MoreHorizontal size={16} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-white border shadow-md z-50">
-          <DropdownMenuItem onClick={handleOpenDetail} className="cursor-pointer gap-2">
-            <Eye size={14} className="text-blue-600" /> Chi tiết & Sửa
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="cursor-pointer gap-2 text-red-600">
-            <Trash size={14} /> Xóa
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {!hideTrigger && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100">
+              <MoreHorizontal size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="bg-white border shadow-md z-50">
+            <DropdownMenuItem onClick={handleOpenDetail} className="cursor-pointer gap-2">
+              <Eye size={14} className="text-blue-600" /> Chi tiết & Sửa
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="cursor-pointer gap-2 text-red-600">
+              <Trash size={14} /> Xóa
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <Dialog open={isDetailOpen} onOpenChange={(open) => {
-        if (!open) { setIsDetailOpen(false); setIsEditMode(false); }
+        if (!open) { setIsDetailOpen(false); setIsEditMode(false); onDetailClose?.(); }
       }}>
         <DialogContent className="bg-white sm:max-w-[900px] p-0 overflow-hidden shadow-lg border-none">
           <DialogHeader className="p-6 pb-4 border-b bg-slate-50">
@@ -546,7 +568,19 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                         onChange={e => setProductSearch(e.target.value)}
                         className="bg-white mb-1"
                       />
-                      <Select value={formData.productId} onValueChange={(v) => setFormData({ ...formData, productId: v })}>
+                      <Select
+                        value={formData.productId}
+                        onValueChange={(v) => {
+                          const product = productsList.find(p => p.id === v);
+                          const isMain = product?.productCategory?.isMain === true;
+                          setFormData({
+                            ...formData,
+                            productId: v,
+                            parentId: isMain ? "none" : formData.parentId,
+                            status: isMain && formData.status === "INSTALLED" ? "IN_STOCK" : formData.status,
+                          });
+                        }}
+                      >
                         <SelectTrigger className="bg-white">
                           <SelectValue placeholder="Chọn sản phẩm" />
                         </SelectTrigger>
@@ -595,8 +629,11 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                         >
                           <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-white">
-                            <SelectItem value="IN_STOCK" disabled={!!(formData.parentId && formData.parentId !== "none")}>
+                            <SelectItem value="IN_STOCK" disabled={!!(!selectedEditProductIsMain && formData.parentId && formData.parentId !== "none")}>
                               Trong kho {formData.parentId && formData.parentId !== "none" && "🚫"}
+                            </SelectItem>
+                            <SelectItem value="INSTALLED" disabled={selectedEditProductIsMain || !formData.parentId || formData.parentId === "none"}>
+                              Đã lắp trong server
                             </SelectItem>
                             <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
                             <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
@@ -704,51 +741,52 @@ export function AssetActionMenu({ asset, onRefresh }: AssetActionMenuProps) {
                       )}
                     </div>
 
-                    {/* THIẾT BỊ CHA */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha (lắp ráp vào)
-                      </label>
-                      <Input
-                        placeholder="Tìm server theo serial hoặc tên..."
-                        value={parentSearch}
-                        onChange={e => setParentSearch(e.target.value)}
-                        className="bg-white h-8 text-sm"
-                      />
-                      <Select
-                        value={formData.parentId}
-                        onValueChange={v => setFormData({
-                          ...formData,
-                          parentId: v,
-                          status: v && v !== "none" ? "DEPLOYED" : formData.status,
-                        })}
-                      >
-                        <SelectTrigger className="bg-white">
-                          <SelectValue placeholder="-- Không lắp vào server nào --" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white max-h-52">
-                          <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
-                          {parentsList
-                            .filter(p => {
-                              if (!parentSearch.trim()) return true;
-                              const q = parentSearch.toLowerCase();
-                              return p.serialNumber.toLowerCase().includes(q) ||
-                                p.product?.name.toLowerCase().includes(q);
-                            })
-                            .map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
-                                <span className="text-slate-700">{p.product?.name}</span>
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      {formData.parentId !== "none" && (
-                        <p className="text-xs text-blue-600">
-                          ✓ Sẽ lắp vào: {parentsList.find(p => p.id === formData.parentId)?.serialNumber} — {parentsList.find(p => p.id === formData.parentId)?.product?.name}
-                        </p>
-                      )}
-                    </div>
+                    {selectedEditProductIsComponent && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha (lắp ráp vào)
+                        </label>
+                        <Input
+                          placeholder="Tìm server theo serial hoặc tên..."
+                          value={parentSearch}
+                          onChange={e => setParentSearch(e.target.value)}
+                          className="bg-white h-8 text-sm"
+                        />
+                        <Select
+                          value={formData.parentId}
+                          onValueChange={v => setFormData({
+                            ...formData,
+                            parentId: v,
+                            status: v && v !== "none" ? "INSTALLED" : formData.status,
+                          })}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="-- Không lắp vào server nào --" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white max-h-52">
+                            <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
+                            {parentsList
+                              .filter(p => {
+                                if (!parentSearch.trim()) return true;
+                                const q = parentSearch.toLowerCase();
+                                return p.serialNumber.toLowerCase().includes(q) ||
+                                  p.product?.name.toLowerCase().includes(q);
+                              })
+                              .map(p => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
+                                  <span className="text-slate-700">{p.product?.name}</span>
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        {formData.parentId !== "none" && (
+                          <p className="text-xs text-blue-600">
+                            ✓ Sẽ lắp vào: {parentsList.find(p => p.id === formData.parentId)?.serialNumber} — {parentsList.find(p => p.id === formData.parentId)?.product?.name}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Ghi chú tình trạng</label>

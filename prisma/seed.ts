@@ -10,6 +10,7 @@ async function main() {
   await prisma.rack.deleteMany();
   await prisma.warehouse.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.productCategory.deleteMany();
 
   console.log("Bắt đầu chèn dữ liệu mới...");
 
@@ -23,23 +24,44 @@ async function main() {
     }
   });
 
+  const categoryData = [
+    { code: "SERVER", name: "Server", isMain: true },
+    { code: "NETWORK", name: "Thiết bị mạng", isMain: true },
+    { code: "MEMORY", name: "RAM / Bộ nhớ", isMain: false },
+    { code: "STORAGE", name: "Lưu trữ", isMain: false },
+    { code: "CPU", name: "CPU", isMain: false },
+    { code: "ACCESSORY", name: "Phụ kiện", isMain: false },
+  ];
+  const categoryMap = new Map<string, string>();
+  for (const c of categoryData) {
+    const category = await prisma.productCategory.create({ data: c });
+    categoryMap.set(c.code, category.id);
+  }
+
   // 1. Tạo 10 Sản phẩm (Products)
   const productsData = [
-    { name: "Dell PowerEdge R740", modelNumber: "R740-001", category: "SERVER", type: "SERVER", brand: "Dell", specification: "2U Rack Server", manufacturer: "Dell" },
-    { name: "HP ProLiant DL380 Gen10", modelNumber: "DL380-G10", category: "SERVER", type: "SERVER", brand: "HP", specification: "2U Rack Server", manufacturer: "HP" },
-    { name: "Cisco Catalyst 9300", modelNumber: "C9300-48P", category: "SWITCH", type: "SWITCH", brand: "Cisco", specification: "48-port PoE", manufacturer: "Cisco" },
-    { name: "FortiGate 100F", modelNumber: "FG-100F", category: "FIREWALL", type: "FIREWALL", brand: "Fortinet", specification: "NGFW", manufacturer: "Fortinet" },
-    { name: "RAM 32GB DDR4 ECC", modelNumber: "RAM-32G-ECC", category: "COMPONENT", type: "RAM", brand: "Samsung", specification: "32GB DDR4 2933Mhz", manufacturer: "Samsung" },
-    { name: "RAM 64GB DDR4 ECC", modelNumber: "RAM-64G-ECC", category: "COMPONENT", type: "RAM", brand: "SK Hynix", specification: "64GB DDR4 3200Mhz", manufacturer: "SK Hynix" },
-    { name: "Intel Xeon Gold 6230", modelNumber: "CPU-XG-6230", category: "COMPONENT", type: "CPU", brand: "Intel", specification: "20-Core 2.1GHz", manufacturer: "Intel" },
-    { name: "SSD Samsung 1.92TB Enterprise", modelNumber: "SSD-192-ENT", category: "STORAGE", type: "SSD", brand: "Samsung", specification: "1.92TB SATA", manufacturer: "Samsung" },
-    { name: "HDD Seagate 8TB SAS", modelNumber: "HDD-8T-SAS", category: "STORAGE", type: "HDD", brand: "Seagate", specification: "8TB 7200RPM", manufacturer: "Seagate" },
-    { name: "Cáp quang OM4 5m", modelNumber: "CBL-OM4-5M", category: "ACCESSORY", type: "CABLE", brand: "CommScope", specification: "LC-LC 5m", manufacturer: "CommScope" },
+    { name: "Dell PowerEdge R740", modelNumber: "R740-001", category: "SERVER", type: "SERVER", vendor: "Dell", description: "2U Rack Server" },
+    { name: "HP ProLiant DL380 Gen10", modelNumber: "DL380-G10", category: "SERVER", type: "SERVER", vendor: "HP", description: "2U Rack Server" },
+    { name: "Cisco Catalyst 9300", modelNumber: "C9300-48P", category: "NETWORK", type: "SWITCH", vendor: "Cisco", description: "48-port PoE" },
+    { name: "FortiGate 100F", modelNumber: "FG-100F", category: "NETWORK", type: "FIREWALL", vendor: "Fortinet", description: "NGFW" },
+    { name: "RAM 32GB DDR4 ECC", modelNumber: "RAM-32G-ECC", category: "MEMORY", type: "RAM", vendor: "Samsung", attributes: { generation: "ECC DDR4", capacity: "32GB", speed: "2933MHz" } },
+    { name: "RAM 64GB DDR4 ECC", modelNumber: "RAM-64G-ECC", category: "MEMORY", type: "RAM", vendor: "SK Hynix", attributes: { generation: "ECC DDR4", capacity: "64GB", speed: "3200MHz" } },
+    { name: "Intel Xeon Gold 6230", modelNumber: "CPU-XG-6230", category: "CPU", type: "CPU", vendor: "Intel", attributes: { series: "Gold", cores: "20C" } },
+    { name: "SSD Samsung 1.92TB Enterprise", modelNumber: "SSD-192-ENT", category: "STORAGE", type: "SSD", vendor: "Samsung", attributes: { type: "SSD", capacity: "1.92TB", interface: "SATA" } },
+    { name: "HDD Seagate 8TB SAS", modelNumber: "HDD-8T-SAS", category: "STORAGE", type: "HDD", vendor: "Seagate", attributes: { type: "HDD", capacity: "8TB", interface: "SAS" } },
+    { name: "Cáp quang OM4 5m", modelNumber: "CBL-OM4-5M", category: "ACCESSORY", type: "CABLE", vendor: "CommScope", description: "LC-LC 5m" },
   ];
 
   const products = [];
-  for (const p of productsData as any[]) {
-    products.push(await prisma.product.create({ data: p }));
+  for (const p of productsData) {
+    const { category, ...product } = p;
+    products.push(await prisma.product.create({
+      data: {
+        ...product,
+        attributes: "attributes" in product ? product.attributes || {} : {},
+        categoryId: categoryMap.get(category)!,
+      }
+    }));
   }
 
   // 2. Tạo 10 Kho hàng (Warehouses)
@@ -89,11 +111,11 @@ async function main() {
   // 5. Lắp ráp thử 1 CPU và 1 RAM vào Server đầu tiên (Demo Self-Relation)
   await prisma.asset.update({
     where: { id: assets[6].id }, // RAM
-    data: { parentId: assets[0].id, status: "DEPLOYED", rackId: racks[0].id, rackUnit: 1 }
+    data: { parentId: assets[0].id, status: "INSTALLED", rackId: racks[0].id, rackUnit: 1 }
   });
   await prisma.asset.update({
     where: { id: assets[7].id }, // CPU
-    data: { parentId: assets[0].id, status: "DEPLOYED", rackId: racks[0].id, rackUnit: 1 }
+    data: { parentId: assets[0].id, status: "INSTALLED", rackId: racks[0].id, rackUnit: 1 }
   });
 
   // 6. Tạo 10 Biến động kho (Stock Movements)

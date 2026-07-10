@@ -20,9 +20,10 @@ import {
   getStorageInterfaces,
   getCpuSeries
 } from "@/lib/product-options";
+import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 
 // TYPESCRIPT INTERFACES
-interface Product { id: string; name: string; category: string; }
+interface Product { id: string; name: string; category: string; productCategory?: ProductCategoryOption; }
 interface Warehouse { id: string; name: string; }
 interface Asset {
   id: string;
@@ -65,6 +66,7 @@ export default function AssemblyPage() {
 
   // Warehouse list for filter dropdown
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
 
   // =============================================
   // FILTER STATES CHO POPUP
@@ -85,14 +87,17 @@ export default function AssemblyPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [assetsRes, warehousesRes] = await Promise.all([
+      const [assetsRes, warehousesRes, categoriesRes] = await Promise.all([
         fetch("/api/assets"),
         fetch("/api/warehouses"),
+        fetch("/api/product-categories"),
       ]);
       const assetsData = await assetsRes.json();
       setAllAssets(Array.isArray(assetsData) ? assetsData : []);
       const whData = await warehousesRes.json();
       setWarehouses(Array.isArray(whData) ? whData : []);
+      const catData = await categoriesRes.json();
+      setCategories(Array.isArray(catData) ? catData : catData.data || []);
     } catch (e) { toast.error("Lỗi tải dữ liệu thiết bị"); }
     finally { setLoading(false); }
   };
@@ -268,7 +273,7 @@ export default function AssemblyPage() {
   const [configSearch, setConfigSearch] = useState("");
 
   const parentAssets = useMemo(() => {
-    const servers = allAssets.filter(a => ['SERVER'].includes(a.product.category));
+    const servers = allAssets.filter(a => a.product.productCategory?.isMain === true);
     if (!parentSearch.trim()) return servers;
     const q = parentSearch.toLowerCase();
     return servers.filter(a =>
@@ -571,12 +576,11 @@ export default function AssemblyPage() {
                   <SelectTrigger className="w-[140px] h-9 shrink-0 font-medium bg-white"><SelectValue placeholder="Danh mục" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Tất cả linh kiện</SelectItem>
-                    <SelectItem value="MEMORY">RAM</SelectItem>
-                    <SelectItem value="STORAGE">Ổ cứng</SelectItem>
-                    <SelectItem value="CPU">Vi xử lý CPU</SelectItem>
-                    <SelectItem value="GPU">Card đồ họa</SelectItem>
-                    <SelectItem value="NETWORK">Card mạng</SelectItem>
-                    <SelectItem value="COMPONENT">Khác</SelectItem>
+                    {categories.filter(category => !category.isMain).map((category) => (
+                      <SelectItem key={category.id} value={category.code}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 

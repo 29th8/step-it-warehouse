@@ -10,7 +10,7 @@ import { Server, MapPin, RefreshCw, AlertCircle, CheckCircle2, Loader2, Search }
 import { toast } from "sonner";
 
 const STATUS_LABELS: Record<string, string> = {
-  IN_STOCK: "Trong kho", DEPLOYED: "Đang dùng", RENTED: "Đang thuê",
+  IN_STOCK: "Trong kho", INSTALLED: "Đã lắp trong server", DEPLOYED: "Đang dùng", RENTED: "Đang thuê",
   MAINTENANCE: "Bảo trì", FAULTY: "Hỏng", DISPOSED: "Thanh lý",
 };
 
@@ -133,7 +133,8 @@ export default function MobileScannerPage() {
               <Badge className={
                 scannedAsset.status === "IN_STOCK" ? "bg-green-600" :
                 scannedAsset.status === "FAULTY" ? "bg-red-600" :
-                scannedAsset.status === "DEPLOYED" ? "bg-blue-600" : "bg-slate-500"
+                scannedAsset.status === "DEPLOYED" ? "bg-blue-600" :
+                scannedAsset.status === "INSTALLED" ? "bg-indigo-600" : "bg-slate-500"
               }>
                 {STATUS_LABELS[scannedAsset.status] || scannedAsset.status}
               </Badge>

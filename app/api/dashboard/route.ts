@@ -4,20 +4,33 @@ import { subDays, startOfDay, format } from "date-fns";
 
 export async function GET() {
   try {
-    const [inStockCount, deployedCount, maintenanceCount, faultyCount, rentedCount, alerts, categoryStats] = await Promise.all([
-      prisma.asset.count({ where: { status: "IN_STOCK", deletedAt: null } }),
+    const [warehouseStockCount, inStockLooseCount, installedCount, installedInWarehouseCount, deployedCount, maintenanceCount, faultyCount, disposedCount, rentedCount, alerts, categoryStats] = await Promise.all([
+      prisma.asset.count({
+        where: {
+          deletedAt: null,
+          OR: [
+            { status: "IN_STOCK", parentId: null },
+            { status: "IN_STOCK", parent: { status: "IN_STOCK" } },
+            { status: "INSTALLED", parent: { status: "IN_STOCK" } },
+          ],
+        }
+      }),
+      prisma.asset.count({ where: { status: "IN_STOCK", parentId: null, deletedAt: null } }),
+      prisma.asset.count({ where: { status: "INSTALLED", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "INSTALLED", parent: { status: "IN_STOCK" }, deletedAt: null } }),
       prisma.asset.count({ where: { status: "DEPLOYED", deletedAt: null } }),
       prisma.asset.count({ where: { status: "MAINTENANCE", deletedAt: null } }),
       prisma.asset.count({ where: { status: "FAULTY", deletedAt: null } }),
+      prisma.asset.count({ where: { status: "DISPOSED", deletedAt: null } }),
       prisma.asset.count({ where: { status: "RENTED", deletedAt: null } }),
       prisma.asset.findMany({
         where: { status: { in: ["FAULTY", "MAINTENANCE"] }, deletedAt: null },
-        include: { product: true, warehouse: true },
+        include: { product: { include: { productCategory: true } }, warehouse: true },
         orderBy: { updatedAt: "desc" },
         take: 5
       }),
       prisma.product.findMany({
-        select: { category: true, _count: { select: { assets: true } } }
+        select: { productCategory: true, _count: { select: { assets: true } } }
       })
     ]);
 
@@ -42,36 +55,35 @@ export async function GET() {
     );
 
     const statsByCategory = categoryStats.reduce((acc: any, curr) => {
-      acc[curr.category] = (acc[curr.category] || 0) + curr._count.assets;
+      const name = curr.productCategory?.name || curr.productCategory?.code || "Khác";
+      acc[name] = (acc[name] || 0) + curr._count.assets;
       return acc;
     }, {});
 
-    const CATEGORY_VI: Record<string, string> = {
-      SERVER: "Máy chủ",
-      MEMORY: "RAM",
-      STORAGE: "Ổ cứng",
-      NETWORK: "Thiết bị mạng",
-      ACCESSORY: "Phụ kiện",
-    };
     const categoryChartData = Object.entries(statsByCategory).map(([name, value]) => ({
-      name: CATEGORY_VI[name] || name,
+      name,
       value,
     }));
 
     const statusChartData = [
-      { name: "Trong kho", value: inStockCount, color: "#22c55e" },
+      { name: "Trong kho", value: warehouseStockCount, color: "#22c55e" },
+      { name: "Đã lắp trong server", value: installedCount, color: "#6366f1" },
       { name: "Đang dùng", value: deployedCount, color: "#3b82f6" },
       { name: "Đang thuê", value: rentedCount, color: "#8b5cf6" },
       { name: "Bảo trì", value: maintenanceCount, color: "#f59e0b" },
       { name: "Hỏng", value: faultyCount, color: "#ef4444" },
+      { name: "Thanh lý", value: disposedCount, color: "#64748b" },
     ].filter(d => d.value > 0);
 
     return NextResponse.json({
       summary: {
-        inStock: inStockCount, deployed: deployedCount,
+        inStock: warehouseStockCount, deployed: deployedCount,
+        installed: installedCount,
+        installedInWarehouse: installedInWarehouseCount,
         maintenance: maintenanceCount, faulty: faultyCount,
+        disposed: disposedCount,
         rented: rentedCount,
-        total: inStockCount + deployedCount + maintenanceCount + faultyCount + rentedCount
+        total: inStockLooseCount + installedCount + deployedCount + maintenanceCount + faultyCount + disposedCount + rentedCount
       },
       alerts,
       statsByCategory,

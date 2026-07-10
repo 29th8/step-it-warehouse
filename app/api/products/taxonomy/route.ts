@@ -13,8 +13,19 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Tham số 'field' không hợp lệ." }, { status: 400 });
         }
 
+        if (field === "category") {
+            const categories = await prisma.productCategory.findMany({
+                orderBy: [{ isMain: "desc" }, { name: "asc" }],
+            });
+            return NextResponse.json(categories.map(c => c.code));
+        }
+
         const whereClause: any = {};
-        if (category) whereClause.category = category;
+        if (category) {
+            whereClause.productCategory = {
+                OR: [{ id: category }, { code: category.toUpperCase() }],
+            };
+        }
         if (type) whereClause.type = type;
 
         // Lấy danh sách các giá trị distinct của field được yêu cầu

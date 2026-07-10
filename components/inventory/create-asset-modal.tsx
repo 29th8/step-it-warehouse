@@ -19,7 +19,15 @@ import {
 
 // Định nghĩa Interfaces
 interface BasicItem { id: string; name: string; warehouseId?: string; type?: string; }
-interface ProductItem { id: string; name: string; modelNumber: string; category: string; type: string; brand?: string; }
+interface ProductItem {
+  id: string;
+  name: string;
+  modelNumber: string;
+  category: string;
+  type: string;
+  brand?: string;
+  productCategory?: { isMain?: boolean };
+}
 
 interface CreateAssetProps {
   onRefresh: () => void;
@@ -123,6 +131,8 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     parentId: "",
   };
   const [formData, setFormData] = useState(initialForm);
+  const selectedProduct = productsList.find(p => p.id === formData.productId);
+  const selectedProductIsComponent = selectedProduct?.productCategory?.isMain === false;
 
   const safeJson = async (res: Response) => {
     if (!res.ok) return [];
@@ -398,7 +408,21 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-500 uppercase text-blue-700">Chính xác Sản phẩm</label>
-                  <Select required value={formData.productId} onValueChange={(v) => setFormData({ ...formData, productId: v })} disabled={productsList.length === 0}>
+                  <Select
+                    required
+                    value={formData.productId}
+                    onValueChange={(v) => {
+                      const product = productsList.find(p => p.id === v);
+                      const isMain = product?.productCategory?.isMain === true;
+                      setFormData({
+                        ...formData,
+                        productId: v,
+                        parentId: isMain ? "" : formData.parentId,
+                        status: isMain && formData.status === "INSTALLED" ? "IN_STOCK" : formData.status,
+                      });
+                    }}
+                    disabled={productsList.length === 0}
+                  >
                     <SelectTrigger className="bg-white border-blue-200 ring-1 ring-blue-100"><SelectValue placeholder={productsList.length > 0 ? "Chọn sản phẩm" : "Vui lòng nhập tìm kiếm hoặc lọc..."} /></SelectTrigger>
                     <SelectContent className="max-h-[250px]">
                       {productsList.length > 0 ? (
@@ -471,6 +495,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   <SelectContent className="bg-white">
                     <SelectItem value="IN_STOCK">Trong kho (IN_STOCK)</SelectItem>
                     <SelectItem value="DEPLOYED">Lắp đặt ngay (DEPLOYED)</SelectItem>
+                    <SelectItem value="INSTALLED" disabled>Đã lắp trong server (tự động khi chọn thiết bị cha)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -486,54 +511,55 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
               />
             </div>
 
-            {/* THIẾT BỊ CHA */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha <span className="text-xs text-slate-400 font-normal">(lắp ngay vào server)</span>
-              </label>
-              <Input
-                placeholder="Tìm server theo serial hoặc tên..."
-                value={parentSearch}
-                onChange={e => setParentSearch(e.target.value)}
-                className="bg-white h-8 text-sm"
-              />
-              <Select
-                value={formData.parentId}
-                onValueChange={v => setFormData({
-                  ...formData,
-                  parentId: v === "none" ? "" : v,
-                  status: v && v !== "none" ? "DEPLOYED" : formData.status,
-                })}
-              >
-                <SelectTrigger className="bg-white">
-                  <SelectValue placeholder="-- Không lắp vào server nào --" />
-                </SelectTrigger>
-                <SelectContent className="bg-white max-h-52">
-                  <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
-                  {parentsList
-                    .filter(p => {
-                      if (!parentSearch.trim()) return true;
-                      const q = parentSearch.toLowerCase();
-                      return p.serialNumber.toLowerCase().includes(q) ||
-                        (p.product?.name || "").toLowerCase().includes(q);
-                    })
-                    .map(p => (
-                      <SelectItem key={p.id} value={p.id}>
-                        <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
-                        <span className="text-slate-700">{p.product?.name}</span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {formData.parentId && formData.parentId !== "none" && (() => {
-                const p = parentsList.find(x => x.id === formData.parentId);
-                return p ? (
-                  <p className="text-xs text-blue-600">
-                    ✓ Sẽ lắp vào: <strong>{p.serialNumber}</strong> — {p.product?.name}
-                  </p>
-                ) : null;
-              })()}
-            </div>
+            {selectedProductIsComponent && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-500" /> Thiết bị cha <span className="text-xs text-slate-400 font-normal">(lắp ngay vào server)</span>
+                </label>
+                <Input
+                  placeholder="Tìm server theo serial hoặc tên..."
+                  value={parentSearch}
+                  onChange={e => setParentSearch(e.target.value)}
+                  className="bg-white h-8 text-sm"
+                />
+                <Select
+                  value={formData.parentId}
+                  onValueChange={v => setFormData({
+                    ...formData,
+                    parentId: v === "none" ? "" : v,
+                    status: v && v !== "none" ? "INSTALLED" : formData.status,
+                  })}
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="-- Không lắp vào server nào --" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white max-h-52">
+                    <SelectItem value="none">-- Không lắp vào server nào --</SelectItem>
+                    {parentsList
+                      .filter(p => {
+                        if (!parentSearch.trim()) return true;
+                        const q = parentSearch.toLowerCase();
+                        return p.serialNumber.toLowerCase().includes(q) ||
+                          (p.product?.name || "").toLowerCase().includes(q);
+                      })
+                      .map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <span className="font-mono text-xs text-blue-600 mr-2">{p.serialNumber}</span>
+                          <span className="text-slate-700">{p.product?.name}</span>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {formData.parentId && formData.parentId !== "none" && (() => {
+                  const p = parentsList.find(x => x.id === formData.parentId);
+                  return p ? (
+                    <p className="text-xs text-blue-600">
+                      ✓ Sẽ lắp vào: <strong>{p.serialNumber}</strong> — {p.product?.name}
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+            )}
 
             <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">
               <div className="space-y-2">

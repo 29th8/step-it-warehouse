@@ -47,7 +47,7 @@ export async function POST(req: Request) {
           },
           data: {
             parentId: parentId,
-            status: "DEPLOYED",
+            status: "INSTALLED",
             warehouseId: parentAsset.warehouseId,
             rackId: parentAsset.rackId,
             rackUnit: parentAsset.rackUnit,
