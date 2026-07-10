@@ -23,7 +23,7 @@ import {
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 
 // TYPESCRIPT INTERFACES
-interface Product { id: string; name: string; category: string; productCategory?: ProductCategoryOption; }
+interface Product { id: string; name: string; category: string; categoryName?: string; productCategory?: ProductCategoryOption; }
 interface Warehouse { id: string; name: string; }
 interface Asset {
   id: string;
@@ -39,6 +39,59 @@ interface GroupedComponents {
     parentDetails: Asset;
     components: Asset[];
   }
+}
+
+const COMPONENT_CATEGORY_ORDER = ["CPU", "MEMORY", "STORAGE", "GPU", "NETWORK", "POWER", "PSU", "FAN", "ACCESSORY"];
+const COMPONENT_CATEGORY_LABELS: Record<string, string> = {
+  CPU: "CPU",
+  MEMORY: "RAM",
+  STORAGE: "Ổ cứng / Lưu trữ",
+  GPU: "Card đồ họa",
+  NETWORK: "Card mạng",
+  POWER: "Nguồn",
+  PSU: "Nguồn",
+  FAN: "Quạt",
+  ACCESSORY: "Phụ kiện",
+  OTHER: "Khác",
+};
+const COMPONENT_CATEGORY_STYLES: Record<string, string> = {
+  CPU: "bg-blue-50 text-blue-700 border-blue-200",
+  MEMORY: "bg-purple-50 text-purple-700 border-purple-200",
+  STORAGE: "bg-orange-50 text-orange-700 border-orange-200",
+  GPU: "bg-green-50 text-green-700 border-green-200",
+  NETWORK: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  POWER: "bg-amber-50 text-amber-700 border-amber-200",
+  PSU: "bg-amber-50 text-amber-700 border-amber-200",
+  FAN: "bg-teal-50 text-teal-700 border-teal-200",
+  ACCESSORY: "bg-slate-50 text-slate-600 border-slate-200",
+  OTHER: "bg-slate-50 text-slate-600 border-slate-200",
+};
+
+function getComponentCategoryCode(asset: Asset) {
+  return asset.product.category || asset.product.productCategory?.code || "OTHER";
+}
+
+function getComponentCategoryLabel(asset: Asset) {
+  const code = getComponentCategoryCode(asset);
+  return asset.product.categoryName || asset.product.productCategory?.name || COMPONENT_CATEGORY_LABELS[code] || code;
+}
+
+function groupComponentsByCategory(assets: Asset[]) {
+  const grouped = assets.reduce((acc: Record<string, { label: string; items: Asset[] }>, asset) => {
+    const code = getComponentCategoryCode(asset);
+    if (!acc[code]) acc[code] = { label: getComponentCategoryLabel(asset), items: [] };
+    acc[code].items.push(asset);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped).sort(([a], [b]) => {
+    const aIndex = COMPONENT_CATEGORY_ORDER.indexOf(a);
+    const bIndex = COMPONENT_CATEGORY_ORDER.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
 }
 
 export default function AssemblyPage() {
@@ -160,8 +213,11 @@ export default function AssemblyPage() {
   };
 
   const handleOpenAssembleModal = (parent: Asset) => {
+    const currentComponentIds = allAssets
+      .filter(asset => asset.parentId === parent.id)
+      .map(asset => asset.id);
     setSelectedParent(parent);
-    setComponentsToAttach([]);
+    setComponentsToAttach(currentComponentIds);
     resetFilters();
     setIsAssembleModalOpen(true);
   };
@@ -231,16 +287,38 @@ export default function AssemblyPage() {
   // =============================================
   const handleAttachBulk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (componentsToAttach.length === 0) return toast.warning("Vui lòng chọn ít nhất một linh kiện");
+    if (!selectedParent) return toast.warning("Vui lòng chọn thiết bị mẹ");
+
+    const currentComponentIds = allAssets
+      .filter(asset => asset.parentId === selectedParent.id)
+      .map(asset => asset.id);
+    const availableComponentIds = availableComponents.map(asset => asset.id);
+    const attachIds = componentsToAttach.filter(id => availableComponentIds.includes(id) && !currentComponentIds.includes(id));
+    const detachIds = currentComponentIds.filter(id => !componentsToAttach.includes(id));
+
+    if (attachIds.length === 0 && detachIds.length === 0) {
+      return toast.warning("Cấu hình chưa có thay đổi");
+    }
+
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/assembly", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: 'ATTACH_BULK', parentId: selectedParent?.id, componentIds: componentsToAttach }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const result = await res.json();
-      toast.success(result.data.message);
+      if (detachIds.length > 0) {
+        const detachRes = await fetch("/api/assembly", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: 'DETACH_BULK', componentIds: detachIds }),
+        });
+        if (!detachRes.ok) throw new Error((await detachRes.json()).error);
+      }
+
+      if (attachIds.length > 0) {
+        const attachRes = await fetch("/api/assembly", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: 'ATTACH_BULK', parentId: selectedParent.id, componentIds: attachIds }),
+        });
+        if (!attachRes.ok) throw new Error((await attachRes.json()).error);
+      }
+
+      toast.success(`Đã cập nhật cấu hình: lắp thêm ${attachIds.length}, tháo ${detachIds.length}.`);
       setIsAssembleModalOpen(false);
       fetchData();
     } catch (error: any) { toast.error(error.message); }
@@ -297,6 +375,38 @@ export default function AssemblyPage() {
       return acc;
     }, {});
   }, [allAssets]);
+
+  const selectedParentCurrentComponents = useMemo(() => {
+    if (!selectedParent) return [];
+    return allAssets.filter(asset => asset.parentId === selectedParent.id);
+  }, [allAssets, selectedParent]);
+
+  const currentComponentIds = useMemo(
+    () => selectedParentCurrentComponents.map(asset => asset.id),
+    [selectedParentCurrentComponents]
+  );
+
+  const availableComponentIds = useMemo(
+    () => availableComponents.map(asset => asset.id),
+    [availableComponents]
+  );
+
+  const selectedAvailableComponents = useMemo(
+    () => availableComponents.filter(asset => componentsToAttach.includes(asset.id)),
+    [availableComponents, componentsToAttach]
+  );
+
+  const selectedModalComponents = useMemo(() => {
+    const byId = new Map<string, Asset>();
+    for (const asset of selectedParentCurrentComponents) byId.set(asset.id, asset);
+    for (const asset of selectedAvailableComponents) byId.set(asset.id, asset);
+    return Array.from(byId.values());
+  }, [selectedParentCurrentComponents, selectedAvailableComponents]);
+
+  const attachCount = componentsToAttach.filter(id => availableComponentIds.includes(id) && !currentComponentIds.includes(id)).length;
+  const detachCount = currentComponentIds.filter(id => !componentsToAttach.includes(id)).length;
+  const hasAssemblyChanges = attachCount > 0 || detachCount > 0;
+  const allVisibleAvailableSelected = availableComponentIds.length > 0 && availableComponentIds.every(id => componentsToAttach.includes(id));
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in">
@@ -427,35 +537,8 @@ export default function AssemblyPage() {
 
                         {/* Danh sách linh kiện nhóm theo category */}
                         {(() => {
-                          const CATEGORY_ORDER = ["CPU", "MEMORY", "STORAGE", "GPU", "NETWORK", "ACCESSORY"];
-                          const CATEGORY_LABELS: Record<string, string> = {
-                            CPU: "Vi xử lý (CPU)",
-                            MEMORY: "RAM",
-                            STORAGE: "Ổ cứng",
-                            GPU: "Card đồ họa",
-                            NETWORK: "Card mạng",
-                            ACCESSORY: "Phụ kiện",
-                          };
-                          const CATEGORY_COLORS: Record<string, string> = {
-                            CPU: "bg-blue-50 text-blue-700 border-blue-200",
-                            MEMORY: "bg-purple-50 text-purple-700 border-purple-200",
-                            STORAGE: "bg-orange-50 text-orange-700 border-orange-200",
-                            GPU: "bg-green-50 text-green-700 border-green-200",
-                            NETWORK: "bg-cyan-50 text-cyan-700 border-cyan-200",
-                            ACCESSORY: "bg-slate-50 text-slate-600 border-slate-200",
-                          };
-                          const grouped = components.reduce((acc: Record<string, Asset[]>, comp) => {
-                            const cat = comp.product.category || "OTHER";
-                            if (!acc[cat]) acc[cat] = [];
-                            acc[cat].push(comp);
-                            return acc;
-                          }, {});
-                          const sortedCats = [
-                            ...CATEGORY_ORDER.filter(c => grouped[c]),
-                            ...Object.keys(grouped).filter(c => !CATEGORY_ORDER.includes(c)),
-                          ];
-                          return sortedCats.map(cat => {
-                            const catComps = grouped[cat];
+                          return groupComponentsByCategory(components).map(([cat, group]) => {
+                            const catComps = group.items;
                             const catIds = catComps.map(c => c.id);
                             const allCatChecked = catIds.every(id => groupSel.includes(id));
                             const someCatChecked = catIds.some(id => groupSel.includes(id));
@@ -468,7 +551,7 @@ export default function AssemblyPage() {
                             };
                             return (
                               <div key={cat} className="space-y-1.5">
-                                <div className={`flex items-center gap-2 px-2 py-1 rounded-md border text-xs font-bold cursor-pointer select-none ${CATEGORY_COLORS[cat] || "bg-slate-50 text-slate-600 border-slate-200"}`} onClick={toggleCat}>
+                                <div className={`flex items-center gap-2 px-2 py-1 rounded-md border text-xs font-bold cursor-pointer select-none ${COMPONENT_CATEGORY_STYLES[cat] || COMPONENT_CATEGORY_STYLES.OTHER}`} onClick={toggleCat}>
                                   <Checkbox
                                     checked={allCatChecked}
                                     data-state={someCatChecked && !allCatChecked ? "indeterminate" : undefined}
@@ -476,7 +559,7 @@ export default function AssemblyPage() {
                                     onClick={e => e.stopPropagation()}
                                     className="border-current data-[state=indeterminate]:bg-current/30"
                                   />
-                                  <span>{CATEGORY_LABELS[cat] || cat}</span>
+                                  <span>{group.label}</span>
                                   <span className="ml-auto opacity-60">{catComps.length}</span>
                                 </div>
                                 {catComps.map(comp => {
@@ -681,26 +764,37 @@ export default function AssemblyPage() {
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">{availableComponents.length} linh kiện</span>
                         <Button type="button" variant="link" size="sm" onClick={() => {
-                          if (componentsToAttach.length === availableComponents.length && availableComponents.length > 0) { setComponentsToAttach([]); }
-                          else { setComponentsToAttach(availableComponents.map(c => c.id)); }
-                        }}><CheckSquare className="w-4 h-4 mr-2" /> {componentsToAttach.length === availableComponents.length && availableComponents.length > 0 ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}</Button>
+                          if (allVisibleAvailableSelected) {
+                            setComponentsToAttach(prev => prev.filter(id => !availableComponentIds.includes(id)));
+                          } else {
+                            setComponentsToAttach(prev => [...new Set([...prev, ...availableComponentIds])]);
+                          }
+                        }}><CheckSquare className="w-4 h-4 mr-2" /> {allVisibleAvailableSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}</Button>
                       </div>
-                      {availableComponents.map(comp => (
-                        <div key={comp.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 border has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200 transition-all">
-                          <Checkbox
-                            id={comp.id}
-                            checked={componentsToAttach.includes(comp.id)}
-                            onCheckedChange={(checked) => {
-                              setComponentsToAttach(prev => checked ? [...prev, comp.id] : prev.filter(id => id !== comp.id));
-                            }}
-                          />
-                          <label htmlFor={comp.id} className="flex-1 cursor-pointer">
-                            <p className="font-semibold">{comp.product.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="font-mono text-xs text-slate-500">{comp.serialNumber}</span>
-                              {comp.owner && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 rounded font-medium">{comp.owner}</span>}
+                      {groupComponentsByCategory(availableComponents).map(([categoryCode, group]) => (
+                        <div key={categoryCode} className="space-y-1.5">
+                          <div className={`flex items-center justify-between px-2 py-1 rounded-md border text-xs font-bold ${COMPONENT_CATEGORY_STYLES[categoryCode] || COMPONENT_CATEGORY_STYLES.OTHER}`}>
+                            <span>{group.label}</span>
+                            <span>{group.items.length}</span>
+                          </div>
+                          {group.items.map(comp => (
+                            <div key={comp.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50 border has-[:checked]:bg-blue-50 has-[:checked]:border-blue-200 transition-all">
+                              <Checkbox
+                                id={comp.id}
+                                checked={componentsToAttach.includes(comp.id)}
+                                onCheckedChange={(checked) => {
+                                  setComponentsToAttach(prev => checked ? [...new Set([...prev, comp.id])] : prev.filter(id => id !== comp.id));
+                                }}
+                              />
+                              <label htmlFor={comp.id} className="flex-1 cursor-pointer min-w-0">
+                                <p className="font-semibold truncate">{comp.product.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="font-mono text-xs text-slate-500">{comp.serialNumber}</span>
+                                  {comp.owner && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 rounded font-medium">{comp.owner}</span>}
+                                </div>
+                              </label>
                             </div>
-                          </label>
+                          ))}
                         </div>
                       ))}
                     </>
@@ -709,18 +803,55 @@ export default function AssemblyPage() {
 
               {/* RIGHT SIDE: SELECTED COMPONENTS */}
               <div className="flex flex-col overflow-y-auto pl-1 pr-2">
-                <h3 className="font-bold text-slate-700 pb-2 border-b mb-3">Linh kiện đã chọn ({componentsToAttach.length})</h3>
+                <div className="pb-2 border-b mb-3">
+                  <h3 className="font-bold text-slate-700">Linh kiện đã chọn ({selectedModalComponents.length})</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Đang lắp: {selectedParentCurrentComponents.length} | Lắp thêm: {attachCount} | Sẽ tháo: {detachCount}
+                  </p>
+                </div>
                 <div className="space-y-3">
-                  {componentsToAttach.length === 0 ? (
+                  {selectedModalComponents.length === 0 ? (
                     <p className="text-sm text-slate-500 italic text-center py-4">Chưa chọn linh kiện nào</p>
                   ) : (
-                    availableComponents.filter(comp => componentsToAttach.includes(comp.id)).map(asset => (
-                      <div key={asset.id} className="flex justify-between items-center border border-blue-200 p-2.5 rounded-md bg-blue-50/50">
-                        <div>
-                          <p className="font-semibold text-sm">{asset.product.name}</p>
-                          <p className="font-mono text-xs text-slate-500">{asset.serialNumber}</p>
+                    groupComponentsByCategory(selectedModalComponents).map(([categoryCode, group]) => (
+                      <div key={categoryCode} className="space-y-1.5">
+                        <div className={`flex items-center justify-between px-2 py-1 rounded-md border text-xs font-bold ${COMPONENT_CATEGORY_STYLES[categoryCode] || COMPONENT_CATEGORY_STYLES.OTHER}`}>
+                          <span>{group.label}</span>
+                          <span>{group.items.length}</span>
                         </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setComponentsToAttach(prev => prev.filter(id => id !== asset.id))} className="text-red-600 hover:text-red-700 hover:bg-red-100 h-8 px-3">Bỏ chọn</Button>
+                        {group.items.map(asset => (
+                          <div key={asset.id} className="flex items-center gap-3 border border-blue-200 p-2.5 rounded-md bg-blue-50/50">
+                            <Checkbox
+                              checked={componentsToAttach.includes(asset.id)}
+                              onCheckedChange={(checked) => {
+                                setComponentsToAttach(prev => checked ? [...new Set([...prev, asset.id])] : prev.filter(id => id !== asset.id));
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-sm truncate">{asset.product.name}</p>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    currentComponentIds.includes(asset.id) && !componentsToAttach.includes(asset.id)
+                                      ? "bg-red-50 text-red-700 border-red-200"
+                                      : currentComponentIds.includes(asset.id)
+                                        ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                        : "bg-green-50 text-green-700 border-green-200"
+                                  }
+                                >
+                                  {currentComponentIds.includes(asset.id) && !componentsToAttach.includes(asset.id)
+                                    ? "Sẽ tháo"
+                                    : currentComponentIds.includes(asset.id)
+                                      ? "Đang lắp"
+                                      : "Mới chọn"}
+                                </Badge>
+                              </div>
+                              <p className="font-mono text-xs text-slate-500">{asset.serialNumber}</p>
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setComponentsToAttach(prev => prev.filter(id => id !== asset.id))} className="text-red-600 hover:text-red-700 hover:bg-red-100 h-8 px-3">Bỏ</Button>
+                          </div>
+                        ))}
                       </div>
                     ))
                   )}
@@ -729,8 +860,8 @@ export default function AssemblyPage() {
             </div>
             <DialogFooter className="px-6 py-4 border-t mt-2 shrink-0">
               <Button type="button" variant="outline" onClick={() => setIsAssembleModalOpen(false)}>Hủy</Button>
-              <Button type="submit" disabled={isSubmitting || componentsToAttach.length === 0} className="bg-blue-600 text-white">
-                {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <LinkIcon className="mr-2" />} Lắp ráp ({componentsToAttach.length}) linh kiện
+              <Button type="submit" disabled={isSubmitting || !hasAssemblyChanges} className="bg-blue-600 text-white">
+                {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <LinkIcon className="mr-2" />} Cập nhật cấu hình
               </Button>
             </DialogFooter>
           </form>
