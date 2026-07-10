@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AssemblyConfigDialog } from "@/components/inventory/assembly-config-dialog";
 
 // ==========================================
 // 1. INTERFACES
@@ -82,6 +83,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
   // ================= STATE =================
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isAssemblyOpen, setIsAssemblyOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [detailData, setDetailData] = useState<AssetDetail | null>(null);
 
@@ -104,6 +106,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
   const selectedEditProduct = productsList.find(p => p.id === formData.productId) || detailData?.product;
   const selectedEditProductIsMain = selectedEditProduct?.productCategory?.isMain === true;
   const selectedEditProductIsComponent = selectedEditProduct?.productCategory?.isMain === false;
+  const detailProductIsMain = detailData?.product?.productCategory?.isMain === true;
 
   const STATUS_LABELS: Record<string, string> = {
     IN_STOCK: "Trong kho",
@@ -548,6 +551,16 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                     </div>
 
                     <DialogFooter className="mt-4 border-t pt-4">
+                      {detailProductIsMain && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsAssemblyOpen(true)}
+                          className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+                        >
+                          <Layers className="w-4 h-4 mr-2" /> Lắp ráp
+                        </Button>
+                      )}
                       <Button onClick={() => setIsEditMode(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
                         <Edit3 className="w-4 h-4 mr-2" /> Chỉnh sửa thông tin
                       </Button>
@@ -815,6 +828,28 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
           </div>
         </DialogContent>
       </Dialog>
+
+      <AssemblyConfigDialog
+        open={isAssemblyOpen}
+        onOpenChange={setIsAssemblyOpen}
+        parentAsset={detailData ? {
+          id: detailData.id,
+          serialNumber: detailData.serialNumber,
+          product: {
+            id: detailData.product?.id || detailData.productId,
+            name: detailData.product?.name || "N/A",
+            category: detailData.product?.category,
+            productCategory: detailData.product?.productCategory as any,
+          },
+          warehouse: detailData.warehouse,
+          owner: detailData.owner,
+          parentId: detailData.parentId,
+        } : null}
+        onSaved={() => {
+          onRefresh();
+          handleOpenDetail();
+        }}
+      />
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent className="bg-white border-none shadow-xl">

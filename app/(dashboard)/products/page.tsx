@@ -8,15 +8,11 @@ import { Input } from "@/components/ui/input";
 import { CreateProductModal } from "@/components/products/create-product-modal";
 import { ProductActionMenu } from "@/components/products/product-action-menu";
 import { ProductCategoryManager, type ProductCategoryOption } from "@/components/products/product-category-manager";
+import { ProductAttributeManager } from "@/components/products/product-attribute-manager";
+import type { ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter } from "lucide-react";
 import { toast } from "sonner";
-import {
-  getGenerations,
-  getStorageTypes,
-  getStorageInterfaces,
-  getCpuSeries
-} from "@/lib/product-options";
 
 export default function ProductListPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -24,6 +20,7 @@ export default function ProductListPage() {
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
+  const [attributeDefinitions, setAttributeDefinitions] = useState<ProductAttributeDefinition[]>([]);
 
   // Advanced Filter States
   const [selCategory, setSelCategory] = useState<string>("ALL");
@@ -42,8 +39,16 @@ export default function ProductListPage() {
     setCategories(Array.isArray(json) ? json : json.data || []);
   };
 
+  const fetchAttributeDefinitions = async () => {
+    const res = await fetch("/api/product-attribute-definitions?activeOnly=true");
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error || "Không thể tải cấu hình thuộc tính");
+    setAttributeDefinitions(json.data || []);
+  };
+
   useEffect(() => {
     fetchCategories().catch(() => setCategories([]));
+    fetchAttributeDefinitions().catch(() => setAttributeDefinitions([]));
   }, []);
 
   useEffect(() => {
@@ -108,7 +113,12 @@ export default function ProductListPage() {
 
   const refreshCategories = () => {
     fetchCategories().catch(() => setCategories([]));
+    fetchAttributeDefinitions().catch(() => setAttributeDefinitions([]));
     refreshList();
+  };
+
+  const refreshAttributes = () => {
+    fetchAttributeDefinitions().catch(() => setAttributeDefinitions([]));
   };
 
   const filteredProducts = Array.isArray(products) ? products : []; // Already filtered globally by Server API
@@ -117,6 +127,12 @@ export default function ProductListPage() {
     const category = categories.find(c => c.code === cat);
     if (category?.isMain) return "bg-blue-100 text-blue-700 border-blue-200";
     return "bg-purple-100 text-purple-700 border-purple-200";
+  };
+
+  const getAttributeOptions = (key: string) => {
+    const category = categories.find(c => c.code === selCategory);
+    const definition = attributeDefinitions.find(d => d.categoryId === category?.id && d.key === key);
+    return definition?.options?.filter(option => option.isActive !== false) || [];
   };
 
   return (
@@ -132,7 +148,8 @@ export default function ProductListPage() {
             <Input placeholder="Tìm tên, model..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
           </div>
           <ProductCategoryManager categories={categories} onRefresh={refreshCategories} />
-          <CreateProductModal categories={categories} onRefresh={refreshList} />
+          <ProductAttributeManager categories={categories} onRefresh={refreshAttributes} />
+          <CreateProductModal categories={categories} attributeDefinitions={attributeDefinitions} onRefresh={refreshList} />
         </div>
       </div>
 
@@ -163,7 +180,7 @@ export default function ProductListPage() {
               <SelectTrigger className="w-[140px] bg-blue-50/50"><SelectValue placeholder="Thế hệ RAM" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">-- Tất cả --</SelectItem>
-                {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                {getAttributeOptions("generation").map(option => <SelectItem key={option.id} value={option.value}>{option.label || option.value}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="relative w-[140px]">
@@ -183,7 +200,7 @@ export default function ProductListPage() {
               <SelectTrigger className="w-[140px] bg-emerald-50/50"><SelectValue placeholder="Loại ổ cứng" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">-- Tất cả --</SelectItem>
-                {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                {getAttributeOptions("type").map(option => <SelectItem key={option.id} value={option.value}>{option.label || option.value}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="relative w-[140px]">
@@ -198,7 +215,7 @@ export default function ProductListPage() {
               <SelectTrigger className="w-[140px] bg-emerald-50/50"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">-- Tất cả --</SelectItem>
-                {getStorageInterfaces().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                {getAttributeOptions("interface").map(option => <SelectItem key={option.id} value={option.value}>{option.label || option.value}</SelectItem>)}
               </SelectContent>
             </Select>
           </>
@@ -209,7 +226,7 @@ export default function ProductListPage() {
             <SelectTrigger className="w-[160px] bg-purple-50/50"><SelectValue placeholder="Dòng CPU (Series)" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">-- Tất cả --</SelectItem>
-              {getCpuSeries().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {getAttributeOptions("series").map(option => <SelectItem key={option.id} value={option.value}>{option.label || option.value}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
@@ -252,7 +269,7 @@ export default function ProductListPage() {
                     <TableCell className="text-center">
                       <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 gap-1"><Server className="w-3 h-3" /> {product._count?.assets || 0}</Badge>
                     </TableCell>
-                    <TableCell className="text-right"><ProductActionMenu product={product} categories={categories} onRefresh={refreshList} /></TableCell>
+                    <TableCell className="text-right"><ProductActionMenu product={product} categories={categories} attributeDefinitions={attributeDefinitions} onRefresh={refreshList} /></TableCell>
                   </TableRow>
                 ))}
           </TableBody>

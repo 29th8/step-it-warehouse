@@ -9,21 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import {
-  getGenerations,
-  getStorageTypes,
-  getStorageInterfaces,
-  getStorageFormFactors,
-  getCpuSeries
-} from "@/lib/product-options";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
+import { ProductAttributeFields, validateRequiredAttributes, type ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
 
 interface CreateProductProps {
   onRefresh: () => void;
   categories: ProductCategoryOption[];
+  attributeDefinitions: ProductAttributeDefinition[];
 }
 
-export function CreateProductModal({ onRefresh, categories }: CreateProductProps) {
+export function CreateProductModal({ onRefresh, categories, attributeDefinitions }: CreateProductProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -37,6 +32,10 @@ export function CreateProductModal({ onRefresh, categories }: CreateProductProps
     attributes: {} as Record<string, any>
   };
   const [formData, setFormData] = useState(initialForm);
+  const selectedCategory = categories.find((category) => category.code === formData.category);
+  const selectedDefinitions = selectedCategory
+    ? attributeDefinitions.filter((definition) => definition.categoryId === selectedCategory.id)
+    : [];
 
   // Xử lý mở/đóng Modal
   const handleOpenChange = (open: boolean) => {
@@ -56,18 +55,10 @@ export function CreateProductModal({ onRefresh, categories }: CreateProductProps
       return;
     }
 
-    if (formData.category === "MEMORY") {
-      if (!formData.attributes.generation || !formData.attributes.capacity) {
-        toast.error("RAM/Memory yêu cầu nhập Generation và Capacity");
-        return;
-      }
-    }
-
-    if (formData.category === "STORAGE") {
-      if (!formData.attributes.type || !formData.attributes.capacity) {
-        toast.error("Storage yêu cầu nhập Type và Capacity");
-        return;
-      }
+    const missingAttributes = validateRequiredAttributes(selectedDefinitions, formData.attributes);
+    if (missingAttributes.length > 0) {
+      toast.error(`Vui lòng nhập: ${missingAttributes.join(", ")}`);
+      return;
     }
 
     setIsSaving(true);
@@ -138,7 +129,7 @@ export function CreateProductModal({ onRefresh, categories }: CreateProductProps
                 <label className="text-sm font-medium text-slate-700">Danh mục (Category) *</label>
                 <Select
                   value={formData.category}
-                  onValueChange={(v) => setFormData({ ...formData, category: v })}
+                  onValueChange={(v) => setFormData({ ...formData, category: v, attributes: {} })}
                 >
                   <SelectTrigger className="bg-white">
                     <SelectValue placeholder="Chọn danh mục" />
@@ -178,114 +169,11 @@ export function CreateProductModal({ onRefresh, categories }: CreateProductProps
               )}
             </div>
 
-            {/* DYNAMIC ATTRIBUTES FORM */}
-            {formData.category === "MEMORY" && (
-              <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-lg space-y-4">
-                <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-                  <Package className="w-4 h-4" /> Cấu hình Bộ nhớ (RAM)
-                </h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Generation *</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, generation: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="DDR4" /></SelectTrigger>
-                      <SelectContent>
-                        {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Capacity *</label>
-                    <Input
-                      placeholder="VD: 32GB, 64GB, 128GB..."
-                      className="bg-white"
-                      value={formData.attributes.capacity || ""}
-                      onChange={(e) => setFormData({ ...formData, attributes: { ...formData.attributes, capacity: e.target.value } })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Speed ( MHz )</label>
-                    <Input
-                      placeholder="VD: 3200MHz"
-                      onChange={(e) => setFormData({ ...formData, attributes: { ...formData.attributes, speed: e.target.value } })}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {formData.category === "STORAGE" && (
-              <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-lg space-y-4">
-                <h4 className="text-sm font-semibold text-emerald-800 flex items-center gap-2">
-                  <Package className="w-4 h-4" /> Cấu hình Lưu trữ
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Type *</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, type: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="SSD/HDD" /></SelectTrigger>
-                      <SelectContent>{getStorageTypes().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Capacity *</label>
-
-                    <Input
-                      placeholder="Ví dụ: 32GB, 1TB..."
-                      className="bg-white"
-                      value={formData.attributes.capacity || ""}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          attributes: {
-                            ...formData.attributes,
-                            capacity: e.target.value
-                          }
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Interface</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, interface: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="NVME/SATA" /></SelectTrigger>
-                      <SelectContent>{getStorageInterfaces().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Form factor</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, formFactor: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="M.2" /></SelectTrigger>
-                      <SelectContent>{getStorageFormFactors().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {formData.category === "CPU" && (
-              <div className="bg-purple-50/50 border border-purple-100 p-4 rounded-lg space-y-4">
-                <h4 className="text-sm font-semibold text-purple-800 flex items-center gap-2">
-                  <Package className="w-4 h-4" /> Cấu hình Vi xử lý
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Series</label>
-                    <Select onValueChange={(v) => setFormData({ ...formData, attributes: { ...formData.attributes, series: v } })}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Gold/Silver" /></SelectTrigger>
-                      <SelectContent>{getCpuSeries().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Cores/Threads (Tùy chọn)</label>
-                    <Input
-                      placeholder="VD: 16C/32T"
-                      onChange={(e) => setFormData({ ...formData, attributes: { ...formData.attributes, cores: e.target.value } })}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+            <ProductAttributeFields
+              definitions={selectedDefinitions}
+              values={formData.attributes}
+              onChange={(attributes) => setFormData({ ...formData, attributes })}
+            />
 
 
 

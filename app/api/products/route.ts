@@ -24,6 +24,21 @@ async function findCategory(category: string) {
   });
 }
 
+async function validateRequiredAttributes(categoryId: string, attributes: Record<string, any> | null | undefined) {
+  const definitions = await prisma.productAttributeDefinition.findMany({
+    where: { categoryId, isActive: true, required: true },
+    select: { key: true, label: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  const missing = definitions.filter((definition) => {
+    const value = attributes?.[definition.key];
+    return value === undefined || value === null || String(value).trim() === "";
+  });
+
+  return missing.map((definition) => definition.label);
+}
+
 // GET: LẤY DANH SÁCH (Hỗ trợ Filter Taxonomy & Kèm số lượng Asset)
 export async function GET(request: Request) {
   try {
@@ -97,6 +112,11 @@ export async function POST(req: Request) {
     const category = await findCategory(data.category);
     if (!category) {
       return NextResponse.json({ error: "Danh mục sản phẩm không tồn tại" }, { status: 400 });
+    }
+
+    const missingAttributes = await validateRequiredAttributes(category.id, data.attributes || {});
+    if (missingAttributes.length > 0) {
+      return NextResponse.json({ error: `Vui lòng nhập: ${missingAttributes.join(", ")}` }, { status: 400 });
     }
 
     // Bắt lỗi trùng Model Number (nếu Model là unique trong schema của bạn)

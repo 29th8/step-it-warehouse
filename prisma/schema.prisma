@@ -18,11 +18,55 @@ model ProductCategory {
   description String?
   isMain      Boolean   @default(false) // true: thiết bị chính, false: linh kiện/phụ kiện
   products    Product[]
+  attributeDefinitions ProductAttributeDefinition[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([code])
   @@index([isMain])
+}
+
+model ProductAttributeDefinition {
+  id          String    @id @default(cuid())
+  categoryId  String
+  category    ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key         String
+  label       String
+  inputType   ProductAttributeInputType @default(TEXT)
+  required    Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  options     ProductAttributeOption[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([categoryId, key])
+  @@index([categoryId])
+  @@index([key])
+  @@index([isActive])
+}
+
+model ProductAttributeOption {
+  id           String    @id @default(cuid())
+  definitionId String
+  definition   ProductAttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  value        String
+  label        String?
+  sortOrder    Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([definitionId, value])
+  @@index([definitionId])
+  @@index([isActive])
+}
+
+enum ProductAttributeInputType {
+  TEXT
+  SELECT
+  NUMBER
+  BOOLEAN
 }
 
 model Product {
