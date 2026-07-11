@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Package, Search, Server } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { CreateProductModal } from "@/components/products/create-product-modal";
 import { ProductActionMenu } from "@/components/products/product-action-menu";
 import { ProductCategoryManager, type ProductCategoryOption } from "@/components/products/product-category-manager";
@@ -14,11 +15,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Filter } from "lucide-react";
 import { toast } from "sonner";
 
+const PAGE_SIZE = 50;
+
 export default function ProductListPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
   const [attributeDefinitions, setAttributeDefinitions] = useState<ProductAttributeDefinition[]>([]);
 
@@ -57,6 +63,8 @@ export default function ProductListPage() {
       setLoadError("");
       try {
         const params = new URLSearchParams();
+        params.append("page", String(page));
+        params.append("pageSize", String(PAGE_SIZE));
         if (selCategory !== "ALL") params.append("category", selCategory);
         if (selVendor) params.append("vendor", selVendor);
         if (search) params.append("search", search);
@@ -76,8 +84,6 @@ export default function ProductListPage() {
           if (selSeries && selSeries !== "none") params.append("series", selSeries);
         }
 
-        params.append("take", "50");
-
         const res = await fetch(`/api/products?${params.toString()}`);
         const json = await res.json().catch(() => null);
         if (!res.ok) {
@@ -86,10 +92,14 @@ export default function ProductListPage() {
 
         const nextProducts = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
         setProducts(nextProducts);
+        setTotal(Array.isArray(json) ? json.length : json?.total || 0);
+        setTotalPages(Array.isArray(json) ? 1 : json?.totalPages || 1);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Không thể tải danh sách sản phẩm";
         setLoadError(message);
         setProducts([]);
+        setTotal(0);
+        setTotalPages(1);
         toast.error(message);
       } finally { setLoading(false); }
     };
@@ -99,7 +109,11 @@ export default function ProductListPage() {
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, search, refreshTick]);
+  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, search, page, refreshTick]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selCategory, selVendor, selGeneration, selCapacity, selAttrType, selInterface, selSeries, search]);
 
   const onCategoryChange = (val: string) => {
     setSelCategory(val);
@@ -275,6 +289,20 @@ export default function ProductListPage() {
           </TableBody>
         </Table>
       </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm">
+          <p className="text-sm text-slate-500">
+            Trang <strong>{page}</strong> / {totalPages} · Tổng <strong>{total}</strong> sản phẩm
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1 || loading}>«</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1 || loading}>‹</Button>
+            <span className="text-sm font-medium px-2">{page}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages || loading}>›</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages || loading}>»</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

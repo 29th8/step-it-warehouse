@@ -65,6 +65,8 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const q = searchParams.get("search");
     const limit = searchParams.get("take");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "0", 10);
 
     // Dynamic attributes
     const generation = searchParams.get("generation");
@@ -105,17 +107,44 @@ export async function GET(request: Request) {
       delete whereClause.AND;
     }
 
+    if (pageSize > 0) {
+      const [products, total] = await prisma.$transaction([
+        prisma.product.findMany({
+          where: whereClause,
+          include: {
+            productCategory: true,
+            _count: {
+              select: { assets: true } // Đếm số lượng tài sản thực tế trong kho
+            }
+          },
+          take: pageSize,
+          skip: (page - 1) * pageSize,
+          orderBy: { name: 'asc' } // Sắp xếp theo tên cho dễ tìm kiếm trên dropdown
+        }),
+        prisma.product.count({ where: whereClause }),
+      ]);
+
+      return NextResponse.json({
+        data: products.map(serializeProduct),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      });
+    }
+
     const products = await prisma.product.findMany({
-      where: whereClause,
-      include: {
-        productCategory: true,
-        _count: {
-          select: { assets: true } // Đếm số lượng tài sản thực tế trong kho
-        }
-      },
-      take: limit ? parseInt(limit) : undefined,
-      orderBy: { name: 'asc' } // Sắp xếp theo tên cho dễ tìm kiếm trên dropdown
-    });
+        where: whereClause,
+        include: {
+          productCategory: true,
+          _count: {
+            select: { assets: true } // Đếm số lượng tài sản thực tế trong kho
+          }
+        },
+        take: limit ? parseInt(limit, 10) : undefined,
+        orderBy: { name: 'asc' } // Sắp xếp theo tên cho dễ tìm kiếm trên dropdown
+      });
+
     return NextResponse.json(products.map(serializeProduct));
   } catch (error) {
     return NextResponse.json({ error: "Lỗi tải danh mục sản phẩm" }, { status: 500 });

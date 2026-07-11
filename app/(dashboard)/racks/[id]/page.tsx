@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RackVisualizer } from "@/components/racks/RackVisualizer";
+import { AssetActionMenu } from "@/components/inventory/asset-action-menu";
 
 interface RackDetail {
   id: string;
@@ -27,6 +28,8 @@ export default function RackDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [detailAsset, setDetailAsset] = useState<{ id: string; serialNumber: string } | null>(null);
+  const [detailOpenToken, setDetailOpenToken] = useState(0);
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => {
@@ -36,24 +39,29 @@ export default function RackDetailPage() {
     });
   };
 
-  useEffect(() => {
+  const openAssetDetail = (asset: any) => {
+    setDetailAsset({ id: asset.id, serialNumber: asset.serialNumber });
+    setDetailOpenToken((token) => token + 1);
+  };
+
+  const fetchRack = async () => {
     if (!rackId) return;
 
-    const fetchRack = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/racks/${rackId}`);
-        if (!res.ok) throw new Error("Không tìm thấy tủ rack");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/racks/${rackId}`);
+      if (!res.ok) throw new Error("Không tìm thấy tủ rack");
 
-        const json = await res.json();
-        setRack(json.data);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+      const json = await res.json();
+      setRack(json.data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchRack();
   }, [rackId]);
 
@@ -166,26 +174,41 @@ export default function RackDetailPage() {
                           <div key={asset.id}>
                             {/* ROW THIẾT BỊ NGUYÊN CHIẾC */}
                             <div
-                              className={`p-3 flex justify-between items-center cursor-pointer transition-colors ${isOpen ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
-                              onClick={() => compCount > 0 && toggleExpand(asset.id)}
+                              className={`p-3 flex justify-between items-center transition-colors ${isOpen ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
                             >
                               <div className="flex items-center gap-3">
                                 <Badge variant="outline" className="min-w-10 h-6 flex items-center justify-center bg-slate-100 font-mono text-xs border-slate-200 shrink-0">
                                   {asset.rackUnit ? `U${asset.rackUnit}` : "Không U"}
                                 </Badge>
-                                <div>
+                                <button
+                                  type="button"
+                                  onClick={() => openAssetDetail(asset)}
+                                  className="text-left min-w-0 rounded px-1 py-0.5 hover:bg-white"
+                                >
                                   <p className="font-semibold text-sm text-slate-800">{asset.product?.name}</p>
                                   <p className="text-[10px] text-slate-400 font-mono">{asset.serialNumber}</p>
-                                </div>
+                                </button>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 {compCount > 0 && (
                                   <span className="text-[10px] text-slate-400">{compCount} linh kiện</span>
                                 )}
                                 {compCount > 0
-                                  ? isOpen
-                                    ? <ChevronDown className="w-4 h-4 text-blue-400" />
-                                    : <ChevronRight className="w-4 h-4 text-slate-300" />
+                                  ? (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleExpand(asset.id);
+                                      }}
+                                      className="p-1 rounded hover:bg-white"
+                                      aria-label={isOpen ? "Thu gọn linh kiện" : "Mở danh sách linh kiện"}
+                                    >
+                                      {isOpen
+                                        ? <ChevronDown className="w-4 h-4 text-blue-400" />
+                                        : <ChevronRight className="w-4 h-4 text-slate-300" />}
+                                    </button>
+                                  )
                                   : <Server className="w-4 h-4 text-slate-200" />
                                 }
                               </div>
@@ -195,7 +218,11 @@ export default function RackDetailPage() {
                             {isOpen && compCount > 0 && (
                               <div className="bg-slate-50 border-t border-slate-100 divide-y divide-slate-100">
                                 {asset.components.map((comp: any) => (
-                                  <div key={comp.id} className="pl-10 pr-3 py-2 flex items-center gap-3">
+                                  <div
+                                    key={comp.id}
+                                    onClick={() => openAssetDetail(comp)}
+                                    className="pl-10 pr-3 py-2 flex items-center gap-3 cursor-pointer hover:bg-white"
+                                  >
                                     <div className="w-1 h-4 bg-blue-200 rounded-full shrink-0" />
                                     <div className="min-w-0">
                                       <p className="text-xs font-semibold text-slate-700 truncate">{comp.product?.name}</p>
@@ -268,12 +295,17 @@ export default function RackDetailPage() {
                       <div key={asset.id}>
                         {/* ROW THIẾT BỊ NGUYÊN CHIẾC */}
                         <div
-                          className={`px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors ${isOpen ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
-                          onClick={() => compCount > 0 && toggleExpand(asset.id)}
+                          className={`px-4 py-3 flex items-center gap-3 transition-colors ${isOpen ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-slate-800 truncate">{asset.product?.name}</p>
-                            <div className="flex items-center gap-3 mt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => openAssetDetail(asset)}
+                              className="text-left max-w-full rounded px-1 py-0.5 hover:bg-white"
+                            >
+                              <p className="font-semibold text-sm text-slate-800 truncate">{asset.product?.name}</p>
+                            </button>
+                            <div className="flex items-center gap-3 mt-0.5 px-1">
                               <span className="font-mono text-[10px] text-slate-400">{asset.serialNumber}</span>
                               {asset.owner && <span className="text-[10px] text-slate-500">{asset.owner}</span>}
                             </div>
@@ -284,7 +316,19 @@ export default function RackDetailPage() {
                           <div className="flex items-center gap-1 shrink-0">
                             {compCount > 0 && <span className="text-[10px] text-slate-400">{compCount}</span>}
                             {compCount > 0
-                              ? isOpen ? <ChevronDown className="w-4 h-4 text-blue-400" /> : <ChevronRight className="w-4 h-4 text-slate-300" />
+                              ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleExpand(asset.id);
+                                  }}
+                                  className="p-1 rounded hover:bg-white"
+                                  aria-label={isOpen ? "Thu gọn linh kiện" : "Mở danh sách linh kiện"}
+                                >
+                                  {isOpen ? <ChevronDown className="w-4 h-4 text-blue-400" /> : <ChevronRight className="w-4 h-4 text-slate-300" />}
+                                </button>
+                              )
                               : <div className="w-4" />
                             }
                           </div>
@@ -294,7 +338,11 @@ export default function RackDetailPage() {
                         {isOpen && compCount > 0 && (
                           <div className="bg-slate-50 border-t border-slate-100 divide-y divide-slate-100">
                             {asset.components.map((comp: any) => (
-                              <div key={comp.id} className="pl-10 pr-4 py-2 flex items-center gap-3">
+                              <div
+                                key={comp.id}
+                                onClick={() => openAssetDetail(comp)}
+                                className="pl-10 pr-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-white"
+                              >
                                 <div className="w-1 h-4 bg-blue-200 rounded-full shrink-0" />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-semibold text-slate-700 truncate">{comp.product?.name}</p>
@@ -313,6 +361,15 @@ export default function RackDetailPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+      {detailAsset && (
+        <AssetActionMenu
+          asset={detailAsset}
+          hideTrigger
+          openToken={detailOpenToken}
+          onRefresh={fetchRack}
+          onDetailClose={() => setDetailAsset(null)}
+        />
       )}
     </div>
   );
