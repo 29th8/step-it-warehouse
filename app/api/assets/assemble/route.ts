@@ -69,7 +69,7 @@ export async function POST(req: Request) {
           // Tự động cập nhật vị trí của linh kiện theo vị trí của máy mẹ
           warehouseId: parentAsset.warehouseId,
           rackId: parentAsset.rackId,
-          rackUnit: parentAsset.rackUnit,
+          rackUnit: null,
         },
       });
 

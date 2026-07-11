@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { Prisma } from "@prisma/client";
 import { checkRackOverlap } from "@/lib/rack-utils"; // Đảm bảo bạn đã tạo file này
+import { getProductRackUnitHeight } from "@/lib/product-u-height";
 
 function serializeAsset(asset: any): any {
   const product = asset.product
@@ -70,6 +71,12 @@ export async function GET(req: Request) {
     const storageInterface = searchParams.get("interface");
     const attrType = searchParams.get("attrType");
     const series = searchParams.get("series");
+    const exactAttributeFilters = Array.from(searchParams.entries())
+      .filter(([key, value]) => key.startsWith("attr_") && value)
+      .map(([key, value]) => ({ key: key.slice(5), value }));
+    const containsAttributeFilters = Array.from(searchParams.entries())
+      .filter(([key, value]) => key.startsWith("attrLike_") && value)
+      .map(([key, value]) => ({ key: key.slice(9), value }));
     const q = searchParams.get("search");
     const limit = searchParams.get("take");
     const isComponent = searchParams.get("component");
@@ -137,7 +144,7 @@ export async function GET(req: Request) {
     }
 
     // Product-level filters (category, vendor, JSON attributes)
-    if (category || vendor || generation || capacity || storageInterface || attrType || series) {
+    if (category || vendor || generation || capacity || storageInterface || attrType || series || exactAttributeFilters.length > 0 || containsAttributeFilters.length > 0) {
       if (!whereClause.product) whereClause.product = {};
       if (!whereClause.product.AND) whereClause.product.AND = [];
 
@@ -153,6 +160,12 @@ export async function GET(req: Request) {
       if (storageInterface) whereClause.product.AND.push({ attributes: { path: ["interface"], equals: storageInterface } });
       if (attrType) whereClause.product.AND.push({ attributes: { path: ["type"], equals: attrType } });
       if (series) whereClause.product.AND.push({ attributes: { path: ["series"], equals: series } });
+      for (const filter of exactAttributeFilters) {
+        whereClause.product.AND.push({ attributes: { path: [filter.key], equals: filter.value } });
+      }
+      for (const filter of containsAttributeFilters) {
+        whereClause.product.AND.push({ attributes: { path: [filter.key], string_contains: filter.value } });
+      }
 
       if (whereClause.product.AND.length === 0) {
         delete whereClause.product.AND;
@@ -214,6 +227,29 @@ export async function POST(req: Request) {
 
     const cleanSN = data.serialNumber.trim().toUpperCase();
 
+    const selectedProduct = data.productId
+      ? await prisma.product.findUnique({
+        where: { id: data.productId },
+        include: { productCategory: true },
+      })
+      : null;
+
+    if (!selectedProduct) {
+      return NextResponse.json({ error: "Vui lòng chọn sản phẩm hợp lệ." }, { status: 400 });
+    }
+
+    const productUHeight = getProductRackUnitHeight(selectedProduct);
+    const selectedProductIsMain = selectedProduct.productCategory?.isMain === true;
+    const submittedRackUnit = data.rackUnit !== undefined && data.rackUnit !== null && data.rackUnit !== ""
+      ? parseInt(data.rackUnit)
+      : null;
+
+    if (submittedRackUnit !== null && (!Number.isInteger(submittedRackUnit) || submittedRackUnit < 1)) {
+      return NextResponse.json({
+        error: "Vị trí U phải là số nguyên lớn hơn hoặc bằng 1."
+      }, { status: 400 });
+    }
+
     // 1. KIỂM TRA TRÙNG LẶP SERIAL NUMBER
     const existingAsset = await prisma.asset.findUnique({
       where: { serialNumber: cleanSN }
@@ -229,7 +265,7 @@ export async function POST(req: Request) {
     // ------------------------------------------------------------------------
     // 2. KIỂM TRA TRÙNG LẶP VỊ TRÍ TRÊN RACK (CHỈ CHO DATACENTER)
     // ------------------------------------------------------------------------
-    if (data.rackId && data.rackId !== "none" && data.rackUnit) {
+    if (selectedProductIsMain && data.rackId && data.rackId !== "none" && submittedRackUnit) {
       const rack = await prisma.rack.findUnique({
         where: { id: data.rackId },
         include: {
@@ -243,8 +279,8 @@ export async function POST(req: Request) {
 
       // Chỉ validate vị trí U cho Rack DATACENTER
       if (rack.type === "DATACENTER" && rack.totalUnits) {
-        const newHeight = parseInt(data.uHeight || 1);
-        const newUnit = parseInt(data.rackUnit);
+        const newHeight = productUHeight;
+        const newUnit = submittedRackUnit;
 
         // Validate vượt quá chiều cao tủ
         if (newUnit + newHeight - 1 > rack.totalUnits) {
@@ -269,13 +305,6 @@ export async function POST(req: Request) {
     }
     // ------------------------------------------------------------------------
 
-    const selectedProduct = data.productId
-      ? await prisma.product.findUnique({
-        where: { id: data.productId },
-        include: { productCategory: true },
-      })
-      : null;
-
     if (data.parentId && selectedProduct?.productCategory?.isMain === true) {
       return NextResponse.json(
         { error: "Thiết bị chính như server/switch/router không thể lắp vào thiết bị cha. Chỉ linh kiện mới được gắn vào server." },
@@ -299,7 +328,7 @@ export async function POST(req: Request) {
       const createData: any = {
         serialNumber: cleanSN,
         status: parentAsset ? "INSTALLED" : (data.status || "IN_STOCK"),
-        uHeight: parseInt(data.uHeight || 1), // Lưu chiều cao U
+        uHeight: productUHeight,
       };
 
       if (data.notes) createData.notes = data.notes;
@@ -313,11 +342,10 @@ export async function POST(req: Request) {
 
       if (parentAsset) {
         if (parentAsset.rackId) createData.rack = { connect: { id: parentAsset.rackId } };
-        createData.rackUnit = parentAsset.rackUnit;
       } else if (data.rackId && data.rackId !== "none") {
         createData.rack = { connect: { id: data.rackId } };
-        if (data.rackUnit) {
-          createData.rackUnit = parseInt(data.rackUnit);
+        if (selectedProductIsMain && submittedRackUnit) {
+          createData.rackUnit = submittedRackUnit;
         }
       }
 

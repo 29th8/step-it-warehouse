@@ -83,11 +83,15 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
       </DialogTrigger>
       <DialogContent className="bg-white sm:max-w-[760px]">
         <DialogHeader>
-          <DialogTitle>Quản lý danh mục sản phẩm</DialogTitle>
+          <DialogTitle>{form.id ? "Sửa danh mục sản phẩm" : "Thêm danh mục sản phẩm"}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <form onSubmit={saveCategory} className="space-y-3 rounded-lg border bg-slate-50 p-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{form.id ? "Thông tin danh mục" : "Danh mục mới"}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Tạo RAM, Storage, Module, Nguồn, Quạt hoặc nhóm thiết bị riêng.</p>
+            </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Mã danh mục</label>
               <Input
@@ -125,7 +129,7 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
             <div className="flex gap-2">
               <Button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700">
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                {form.id ? "Lưu" : "Thêm"}
+                {form.id ? "Lưu danh mục" : "Thêm danh mục"}
               </Button>
               {form.id && (
                 <Button type="button" variant="outline" onClick={resetForm} className="bg-white">
@@ -185,4 +189,3 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
     </Dialog>
   );
 }
-

@@ -39,6 +39,24 @@ async function validateRequiredAttributes(categoryId: string, attributes: Record
   return missing.map((definition) => definition.label);
 }
 
+function validateRackUnitHeight(attributes: Record<string, any> | null | undefined) {
+  const rawValue = attributes?.uHeight;
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") return null;
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return "Chiều cao rack (U) phải là số nguyên lớn hơn hoặc bằng 1.";
+  }
+
+  return null;
+}
+
+function sanitizeAttributesForCategory(isMain: boolean, attributes: Record<string, any> | null | undefined) {
+  const sanitized = { ...(attributes || {}) };
+  if (!isMain) delete sanitized.uHeight;
+  return sanitized;
+}
+
 // GET: LẤY DANH SÁCH (Hỗ trợ Filter Taxonomy & Kèm số lượng Asset)
 export async function GET(request: Request) {
   try {
@@ -114,9 +132,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Danh mục sản phẩm không tồn tại" }, { status: 400 });
     }
 
-    const missingAttributes = await validateRequiredAttributes(category.id, data.attributes || {});
+    const attributes = sanitizeAttributesForCategory(category.isMain, data.attributes || {});
+    const missingAttributes = await validateRequiredAttributes(category.id, attributes);
     if (missingAttributes.length > 0) {
       return NextResponse.json({ error: `Vui lòng nhập: ${missingAttributes.join(", ")}` }, { status: 400 });
+    }
+
+    const rackUnitHeightError = category.isMain ? validateRackUnitHeight(attributes) : null;
+    if (rackUnitHeightError) {
+      return NextResponse.json({ error: rackUnitHeightError }, { status: 400 });
     }
 
     // Bắt lỗi trùng Model Number (nếu Model là unique trong schema của bạn)
@@ -136,7 +160,7 @@ export async function POST(req: Request) {
         type: normalizedType,
         vendor: data.vendor,
         description: data.description,
-        attributes: data.attributes || {}
+        attributes
       }
     });
 

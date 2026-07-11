@@ -45,6 +45,19 @@ export function ProductActionMenu({ product, onRefresh, categories, attributeDef
   const selectedDefinitions = selectedCategory
     ? attributeDefinitions.filter((definition) => definition.categoryId === selectedCategory.id)
     : [];
+  const detailCategory = detailData
+    ? categories.find((category) => category.code === detailData.category)
+    : undefined;
+  const visibleDetailAttributeDefinitions = detailCategory
+    ? attributeDefinitions.filter((definition) => definition.categoryId === detailCategory.id && definition.isActive)
+    : [];
+  const visibleDetailAttributes = detailData?.attributes
+    ? Object.entries(detailData.attributes).filter(([key, val]) =>
+      val !== undefined &&
+      val !== null &&
+      visibleDetailAttributeDefinitions.some((definition) => definition.key === key)
+    )
+    : [];
 
   // Mở Modal & Fetch Data
   const handleOpenDetail = async () => {
@@ -207,17 +220,17 @@ export function ProductActionMenu({ product, onRefresh, categories, attributeDef
                 </div>
 
                 {/* VISUALIZE JSON ATTRIBUTES */}
-                {detailData.attributes && Object.keys(detailData.attributes).length > 0 && (
+                {visibleDetailAttributes.length > 0 && (
                   <div className="pt-2">
                     <p className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1.5 uppercase tracking-wider"><AlignLeft className="w-3.5 h-3.5" /> Thông số Kỹ thuật (Attributes)</p>
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      {Object.entries(detailData.attributes).map(([key, val]) => (
-                        val !== undefined && val !== null && (
-                          <div key={key} className="bg-white px-2 py-1.5 border border-slate-200 rounded flex flex-col shadow-sm">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{key}</span>
-                            <span className="text-sm font-semibold text-slate-800">{String(val as string | number | boolean)}</span>
-                          </div>
-                        )
+                      {visibleDetailAttributes.map(([key, val]) => (
+                        <div key={key} className="bg-white px-2 py-1.5 border border-slate-200 rounded flex flex-col shadow-sm">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            {visibleDetailAttributeDefinitions.find((definition) => definition.key === key)?.label || key}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-800">{String(val as string | number | boolean)}</span>
+                        </div>
                       ))}
                     </div>
                   </div>

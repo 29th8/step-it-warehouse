@@ -50,7 +50,7 @@ export async function POST(req: Request) {
             status: "INSTALLED",
             warehouseId: parentAsset.warehouseId,
             rackId: parentAsset.rackId,
-            rackUnit: parentAsset.rackUnit,
+            rackUnit: null,
           },
         });
 

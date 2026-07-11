@@ -33,16 +33,17 @@ interface CreateAssetProps {
   onRefresh: () => void;
 }
 
-function RackUnitFields({ formData, setFormData, racksList }: {
+function RackUnitFields({ formData, setFormData, racksList, allowRackUnit }: {
   formData: any;
   setFormData: (v: any) => void;
   racksList: BasicItem[];
+  allowRackUnit: boolean;
 }) {
   const selectedRack = racksList.find(r => r.id === formData.rackId);
   const isStorage = selectedRack?.type === "STORAGE";
 
   return (
-    <div className="grid grid-cols-4 gap-4 animate-in slide-in-from-top-2">
+    <div className="grid grid-cols-3 gap-4 animate-in slide-in-from-top-2">
       <div className="col-span-2 space-y-2">
         <label className="text-sm font-medium text-slate-700">Tủ Rack</label>
         <Select value={formData.rackId} onValueChange={(v: string) => setFormData({ ...formData, rackId: v === "none" ? "" : v })}>
@@ -56,37 +57,22 @@ function RackUnitFields({ formData, setFormData, racksList }: {
         </Select>
       </div>
 
-      {formData.rackId && !isStorage && (
+      {allowRackUnit && formData.rackId && !isStorage && (
         <div className="col-span-1 space-y-2">
           <label className="text-sm font-medium text-slate-700">Vị trí U</label>
           <Input
             type="number" min="1" max="48" placeholder="U?"
             value={formData.rackUnit}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, rackUnit: e.target.value })}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const value = e.target.value;
+              if (value === "" || Number(value) >= 1) setFormData({ ...formData, rackUnit: value });
+            }}
             disabled={!formData.rackId}
             className="bg-white"
           />
         </div>
       )}
 
-      {formData.rackId && !isStorage && (
-        <div className="col-span-1 space-y-2">
-          <label className="text-sm font-medium text-slate-700">Cỡ (U)</label>
-          <Select
-            value={formData.uHeight}
-            onValueChange={(v: string) => setFormData({ ...formData, uHeight: v })}
-            disabled={!formData.rackId}
-          >
-            <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-white">
-              <SelectItem value="1">1U</SelectItem>
-              <SelectItem value="2">2U</SelectItem>
-              <SelectItem value="3">3U</SelectItem>
-              <SelectItem value="4">4U</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
     </div>
   );
 }
@@ -132,6 +118,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
   };
   const [formData, setFormData] = useState(initialForm);
   const selectedProduct = productsList.find(p => p.id === formData.productId);
+  const selectedProductIsMain = selectedProduct?.productCategory?.isMain === true;
   const selectedProductIsComponent = selectedProduct?.productCategory?.isMain === false;
 
   const safeJson = async (res: Response) => {
@@ -246,14 +233,13 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
 
     setIsSaving(true);
     try {
+      const payload = { ...formData, uHeight: undefined };
       const res = await fetch("/api/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Gửi toàn bộ formData bao gồm cả uHeight lên server
         body: JSON.stringify({
-          ...formData,
-          rackUnit: formData.rackUnit ? parseInt(formData.rackUnit) : null,
-          uHeight: parseInt(formData.uHeight)
+          ...payload,
+          rackUnit: selectedProductIsMain && formData.rackUnit ? parseInt(formData.rackUnit) : null,
         }),
       });
 
@@ -577,6 +563,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   formData={formData}
                   setFormData={setFormData}
                   racksList={racksList}
+                  allowRackUnit={selectedProductIsMain}
                 />
               )}
             </div>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckSquare, Cpu, Filter, Link as LinkIcon, Loader2, Search } from "lucide-react";
+import { CheckSquare, Cpu, Filter, Link as LinkIcon, Loader2, Search, Unlink } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -175,6 +175,14 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
     setSelectedIds((prev) => checked ? [...new Set([...prev, id])] : prev.filter((item) => item !== id));
   };
 
+  const detachAll = () => {
+    setSelectedIds([]);
+  };
+
+  const detachGroup = (ids: string[]) => {
+    setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
+  };
+
   const handleSave = async () => {
     if (!parentAsset || !hasChanges) return;
     setSaving(true);
@@ -305,11 +313,24 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
           </div>
 
           <div className="overflow-y-auto pl-1 pr-2 space-y-3">
-            <div className="pb-2 border-b">
-              <h3 className="font-bold text-slate-700">Cấu hình đang chọn ({selectedComponents.length})</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Đang lắp: {currentComponents.length} | Lắp thêm: {attachIds.length} | Sẽ tháo: {detachIds.length}
-              </p>
+            <div className="pb-2 border-b flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-slate-700">Cấu hình đang chọn ({selectedComponents.length})</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Đang lắp: {currentComponents.length} | Lắp thêm: {attachIds.length} | Sẽ tháo: {detachIds.length}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={selectedIds.length === 0}
+                onClick={detachAll}
+                className="border-red-200 text-red-700 hover:bg-red-50"
+              >
+                <Unlink className="w-4 h-4 mr-2" />
+                Tháo tất cả
+              </Button>
             </div>
             {selectedComponents.length === 0 ? (
               <p className="text-sm text-slate-400 italic text-center py-8">Chưa có linh kiện nào.</p>
@@ -318,7 +339,20 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
                 <div key={code} className="space-y-1.5">
                   <div className={`flex items-center justify-between px-2 py-1 rounded-md border text-xs font-bold ${CATEGORY_STYLES[code] || CATEGORY_STYLES.OTHER}`}>
                     <span>{group.label}</span>
-                    <span>{group.items.length}</span>
+                    <div className="flex items-center gap-2">
+                      <span>{group.items.length}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={!group.items.some((item) => selectedIds.includes(item.id))}
+                        onClick={() => detachGroup(group.items.map((item) => item.id))}
+                        className="h-6 px-2 text-[11px] text-red-700 hover:bg-red-50"
+                      >
+                        <Unlink className="w-3 h-3 mr-1" />
+                        Tháo hết
+                      </Button>
+                    </div>
                   </div>
                   {group.items.map((component) => {
                     const isCurrent = currentIds.includes(component.id);

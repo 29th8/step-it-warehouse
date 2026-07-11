@@ -5,6 +5,7 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 // Giả định bạn đã tạo file này theo gợi ý của AI trước đó
 import { checkRackOverlap } from "@/lib/rack-utils";
 import { collectAssetTree, resolveRestoredStatus } from "@/lib/asset-tree";
+import { getProductRackUnitHeight } from "@/lib/product-u-height";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -107,7 +108,23 @@ export async function PATCH(req: Request, props: Props) {
         include: { productCategory: true },
       })
       : existingAsset.product;
+    if (!targetProduct) {
+      return NextResponse.json({ error: "Sản phẩm không hợp lệ." }, { status: 400 });
+    }
+    const normalizedRackId = data.rackId && data.rackId !== "none" ? data.rackId : null;
+    const productChanged = Boolean(data.productId && data.productId !== existingAsset.productId);
+    const targetUHeight = getProductRackUnitHeight(targetProduct, productChanged ? 1 : existingAsset.uHeight || 1);
     const targetProductIsMain = targetProduct?.productCategory?.isMain === true;
+    const submittedRackUnit = data.rackUnit !== undefined && data.rackUnit !== null && data.rackUnit !== ""
+      ? parseInt(data.rackUnit)
+      : null;
+
+    if (submittedRackUnit !== null && (!Number.isInteger(submittedRackUnit) || submittedRackUnit < 1)) {
+      return NextResponse.json({
+        error: "Vị trí U phải là số nguyên lớn hơn hoặc bằng 1."
+      }, { status: 400 });
+    }
+
     const targetHasParent = data.parentId && data.parentId !== "none";
     const keepsExistingParent = data.parentId === undefined && existingAsset.parentId;
 
@@ -163,6 +180,9 @@ export async function PATCH(req: Request, props: Props) {
       if (field === 'rackUnit') {
         if (newDataValue !== undefined && newDataValue !== null) newDataValue = Number(newDataValue);
         if (existingValue !== undefined && existingValue !== null) existingValue = Number(existingValue);
+      }
+      if (field === 'rackId') {
+        if (newDataValue === "none") newDataValue = null;
       }
 
       if (data[field] !== undefined && newDataValue !== existingValue) {
@@ -287,15 +307,15 @@ export async function PATCH(req: Request, props: Props) {
     }
 
     const locationChanged =
-      existingAsset.rackId !== data.rackId ||
-      existingAsset.rackUnit !== Number(data.rackUnit) ||
-      existingAsset.uHeight !== Number(data.uHeight);
+      existingAsset.rackId !== normalizedRackId ||
+      existingAsset.rackUnit !== (targetProductIsMain ? submittedRackUnit : null) ||
+      existingAsset.uHeight !== targetUHeight;
 
     // MỚI: LOGIC VALIDATE TRÙNG LẶP VÀ CHIỀU CAO RACK (CHỈ DATACENTER)
     // ------------------------------------------------------------------------
-    if (data.rackId && data.rackUnit && locationChanged) {
+    if (targetProductIsMain && normalizedRackId && submittedRackUnit && locationChanged) {
       const rack = await prisma.rack.findUnique({
-        where: { id: data.rackId },
+        where: { id: normalizedRackId },
         include: {
           assets: { select: { id: true, rackUnit: true, uHeight: true } }
         }
@@ -305,8 +325,8 @@ export async function PATCH(req: Request, props: Props) {
 
       // Chỉ validate cho Rack DATACENTER
       if (rack.type === "DATACENTER" && rack.totalUnits) {
-        const newHeight = parseInt(data.uHeight || 1);
-        const newUnit = parseInt(data.rackUnit);
+        const newHeight = targetUHeight;
+        const newUnit = submittedRackUnit;
 
         if (newUnit + newHeight - 1 > rack.totalUnits) {
           return NextResponse.json({
@@ -333,13 +353,13 @@ export async function PATCH(req: Request, props: Props) {
     // C. TẠO NOTE GHI CHÚ
     const warehouse = await prisma.warehouse.findUnique({ where: { id: data.warehouseId } });
     let rackName = "Không lên tủ";
-    if (data.rackId) {
-      const rack = await prisma.rack.findUnique({ where: { id: data.rackId } });
+    if (normalizedRackId) {
+      const rack = await prisma.rack.findUnique({ where: { id: normalizedRackId } });
       if (rack) rackName = rack.name;
     }
 
-    const uText = data.uHeight ? ` (Cỡ: ${data.uHeight}U)` : "";
-    const rackUnitText = data.rackUnit ? ` - Vị trí U: ${data.rackUnit}${uText}` : "";
+    const uText = ` (Cỡ: ${targetUHeight}U)`;
+    const rackUnitText = targetProductIsMain && submittedRackUnit ? ` - Vị trí U: ${submittedRackUnit}${uText}` : "";
     const locationNote = `Cập nhật vị trí: ${warehouse?.name || "N/A"} - Tủ: ${rackName}${rackUnitText}. Trạng thái: ${data.status}. Ghi chú: ${data.notes || "Không"}`;
 
     // D. CHUẨN BỊ DATA UPDATE
@@ -348,8 +368,8 @@ export async function PATCH(req: Request, props: Props) {
       status: data.status,
       notes: data.notes,
       owner: data.owner !== undefined ? (data.owner || null) : undefined,
-      uHeight: data.uHeight ? parseInt(data.uHeight) : 1,
-      rackUnit: data.rackUnit ? parseInt(data.rackUnit) : null,
+      uHeight: targetUHeight,
+      rackUnit: targetProductIsMain ? submittedRackUnit : null,
     };
 
     const attachesToParent = data.parentId && data.parentId !== "none";
@@ -362,8 +382,8 @@ export async function PATCH(req: Request, props: Props) {
 
     if (data.productId) updateData.product = { connect: { id: data.productId } };
     if (data.warehouseId) updateData.warehouse = { connect: { id: data.warehouseId } };
-    if (data.rackId) {
-      updateData.rack = { connect: { id: data.rackId } };
+    if (normalizedRackId) {
+      updateData.rack = { connect: { id: normalizedRackId } };
     } else {
       updateData.rack = { disconnect: true };
     }
@@ -385,7 +405,7 @@ export async function PATCH(req: Request, props: Props) {
         where: { parentId: assetId },
         data: {
           warehouseId: updateData.warehouse?.connect?.id || data.warehouseId,
-          rackId: updateData.rack?.connect?.id || data.rackId || null,
+          rackId: updateData.rack?.connect?.id || null,
           rackUnit: null,
         },
       });

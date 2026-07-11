@@ -239,8 +239,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
         body: JSON.stringify({
           ...formData,
           rackId: formData.rackId === "none" || formData.rackId === "" ? null : formData.rackId,
-          rackUnit: formData.rackUnit ? parseInt(formData.rackUnit) : null,
-          uHeight: parseInt(formData.uHeight),
+          rackUnit: selectedEditProductIsMain && formData.rackUnit ? parseInt(formData.rackUnit) : null,
           parentId: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.parentId
         }),
       });
@@ -301,7 +300,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
       <Dialog open={isDetailOpen} onOpenChange={(open) => {
         if (!open) { setIsDetailOpen(false); setIsEditMode(false); onDetailClose?.(); }
       }}>
-        <DialogContent className="bg-white sm:max-w-[900px] p-0 overflow-hidden shadow-lg border-none">
+        <DialogContent className="bg-white sm:max-w-[900px] h-[90vh] p-0 overflow-hidden shadow-lg border-none flex flex-col">
           <DialogHeader className="p-6 pb-4 border-b bg-slate-50">
             <DialogTitle className="flex items-center gap-2 text-slate-800">
               <Box className="w-5 h-5 text-blue-600" />
@@ -309,9 +308,9 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
             </DialogTitle>
           </DialogHeader>
 
-          <div className="p-6 overflow-y-auto max-h-[75vh]">
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {isLoading || !detailData ? (
-              <div className="flex flex-col items-center justify-center h-[200px]">
+              <div className="flex flex-col items-center justify-center h-[200px] p-6">
                 <Loader2 className="animate-spin text-blue-600 w-8 h-8" />
                 <p className="text-sm text-slate-500 mt-2">Đang tải dữ liệu...</p>
               </div>
@@ -320,7 +319,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                 {!isEditMode ? (
                   // ================= CHẾ ĐỘ XEM (VIEW MODE) =================
                   <div className="flex flex-col h-full animate-in fade-in zoom-in-95 duration-200">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto min-h-0 flex-1">
                       {/* CỘT TRÁI */}
                       <div className="space-y-6">
                         {/* SECTION 1: THÔNG TIN THIẾT BỊ */}
@@ -386,7 +385,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                               {detailData.rack ? (
                                 <p className="font-medium text-blue-700 flex flex-wrap items-center gap-1.5">
                                   {detailData.rack.name}
-                                  {detailData.rackUnit && (
+                                  {detailProductIsMain && detailData.rackUnit && (
                                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-bold">
                                       U{detailData.rackUnit} {detailData.uHeight && detailData.uHeight > 1 ? `(${detailData.uHeight}U)` : ""}
                                     </Badge>
@@ -550,7 +549,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                       </div>
                     </div>
 
-                    <DialogFooter className="mt-4 border-t pt-4">
+                    <DialogFooter className="px-6 py-4 border-t bg-white shrink-0">
                       {detailProductIsMain && (
                         <Button
                           type="button"
@@ -568,7 +567,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                   </div>
                 ) : (
                   // ================= CHẾ ĐỘ SỬA (EDIT MODE) =================
-                  <form onSubmit={handleSaveEdit} className="space-y-4 animate-in slide-in-from-right-4 duration-200">
+                  <form onSubmit={handleSaveEdit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4 animate-in slide-in-from-right-4 duration-200">
 
                     {/* SẢN PHẨM MODEL */}
                     <div className="space-y-2 border p-4 rounded-lg bg-blue-50/30">
@@ -698,8 +697,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                       </div>
 
                       {formData.warehouseId && (
-                        /* ĐÃ GHÉP KHU VỰC CẬP NHẬT: 3 CỘT (RACK - UNIT - HEIGHT) */
-                        <div className="grid grid-cols-3 gap-4 animate-in slide-in-from-top-2">
+                        <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
                           <div className="col-span-2 sm:col-span-1 space-y-2">
                             <label className="text-sm font-medium text-slate-700">Tủ Rack</label>
                             <Select
@@ -721,35 +719,24 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                             </Select>
                           </div>
 
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Vị trí U (Đáy)</label>
-                            <Input
-                              type="number"
-                              placeholder="Vd: 10"
-                              value={formData.rackUnit}
-                              onChange={(e) => setFormData({ ...formData, rackUnit: e.target.value })}
-                              disabled={formData.rackId === "none" || !formData.rackId}
-                              className="bg-white"
-                            />
-                          </div>
+                          {selectedEditProductIsMain && (
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">Vị trí U (Đáy)</label>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder="Vd: 10"
+                                value={formData.rackUnit}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === "" || Number(value) >= 1) setFormData({ ...formData, rackUnit: value });
+                                }}
+                                disabled={formData.rackId === "none" || !formData.rackId}
+                                className="bg-white"
+                              />
+                            </div>
+                          )}
 
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Chiều cao</label>
-                            <Select
-                              value={formData.uHeight}
-                              onValueChange={(v) => setFormData({ ...formData, uHeight: v })}
-                              disabled={formData.rackId === "none" || !formData.rackId}
-                            >
-                              <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                              <SelectContent className="bg-white">
-                                <SelectItem value="1">1U</SelectItem>
-                                <SelectItem value="2">2U</SelectItem>
-                                <SelectItem value="3">3U</SelectItem>
-                                <SelectItem value="4">4U</SelectItem>
-                                <SelectItem value="5">5U</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
                         </div>
                       )}
                     </div>

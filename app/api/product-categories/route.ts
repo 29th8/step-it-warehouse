@@ -51,14 +51,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Mã và tên danh mục là bắt buộc" }, { status: 400 });
     }
 
-    const category = await prisma.productCategory.create({
-      data: {
-        code,
-        name,
-        description: body.description || null,
-        isMain: Boolean(body.isMain),
-      },
-      include: { _count: { select: { products: true } } },
+    const isMain = Boolean(body.isMain);
+    const category = await prisma.$transaction(async (tx) => {
+      const created = await tx.productCategory.create({
+        data: {
+          code,
+          name,
+          description: body.description || null,
+          isMain,
+        },
+        include: { _count: { select: { products: true } } },
+      });
+
+      if (isMain) {
+        await tx.productAttributeDefinition.create({
+          data: {
+            categoryId: created.id,
+            key: "uHeight",
+            label: "Chiều cao rack (U)",
+            inputType: "NUMBER",
+            required: false,
+            sortOrder: 5,
+            isActive: true,
+          },
+        });
+      }
+
+      return created;
     });
 
     return NextResponse.json({ data: category }, { status: 201 });
@@ -70,4 +89,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Lỗi tạo danh mục" }, { status: 500 });
   }
 }
-

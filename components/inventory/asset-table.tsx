@@ -130,7 +130,8 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
                     {asset.rack && (
                       <div className="flex items-center gap-1.5 text-blue-600 font-medium">
                         <Server size={12} />
-                        {asset.rack.name} - U{asset.rackUnit}
+                        {asset.rack.name}
+                        {asset.product?.productCategory?.isMain === true && asset.rackUnit ? ` - U${asset.rackUnit}` : ""}
                       </div>
                     )}
                     {/* Nếu là linh kiện con, hiển thị nó nằm trong máy nào */}

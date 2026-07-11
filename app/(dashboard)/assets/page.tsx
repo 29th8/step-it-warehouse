@@ -1,172 +1,204 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Download, Filter, Package, RefreshCw, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AssetTable } from "@/components/inventory/asset-table";
-import { Package, Filter, RefreshCw, Search, Server, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AssetTable } from "@/components/inventory/asset-table";
 import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { ImportAssetModal } from "@/components/inventory/import-asset-modal";
-import { Download } from "lucide-react";
-import { Trash2 } from "lucide-react";
-import {
-  getGenerations,
-  getStorageTypes,
-  getStorageInterfaces,
-  getCpuSeries
-} from "@/lib/product-options";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
+import type { ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
 
 const PAGE_SIZE = 50;
 
-function buildCommonParams(
-  selCategory: string, selVendor: string, searchQuery: string, ownerFilter: string,
-  filterStatus: string, selGeneration: string, selCapacity: string,
-  selAttrType: string, selInterface: string, selSeries: string
-) {
-  const params = new URLSearchParams();
-  if (selVendor) params.append("vendor", selVendor);
-  if (searchQuery) params.append("search", searchQuery);
-  if (ownerFilter) params.append("owner", ownerFilter);
-  if (filterStatus !== "ALL") params.append("status", filterStatus);
-  if (selCategory !== "ALL") params.append("category", selCategory);
-  if (selCategory === "MEMORY") {
-    if (selGeneration && selGeneration !== "none") params.append("generation", selGeneration);
-    if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
-  }
-  if (selCategory === "STORAGE") {
-    if (selAttrType && selAttrType !== "none") params.append("attrType", selAttrType);
-    if (selCapacity && selCapacity !== "none") params.append("capacity", selCapacity);
-    if (selInterface && selInterface !== "none") params.append("interface", selInterface);
-  }
-  if (selCategory === "CPU") {
-    if (selSeries && selSeries !== "none") params.append("series", selSeries);
-  }
-  params.append("pageSize", String(PAGE_SIZE));
-  return params;
+type AssetResponse = {
+  data?: any[];
+  total?: number;
+  totalPages?: number;
+};
+
+function parseList(json: any) {
+  return Array.isArray(json) ? json : json?.data || [];
 }
 
 export default function AssetListPage() {
   const router = useRouter();
 
-  // Filters
+  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
+  const [attributeDefinitions, setAttributeDefinitions] = useState<ProductAttributeDefinition[]>([]);
+  const [activeCategory, setActiveCategory] = useState("");
+
+  const [assets, setAssets] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("main");
-  const [selCategory, setSelCategory] = useState<string>("ALL");
-  const [selVendor, setSelVendor] = useState<string>("");
-  const [selGeneration, setSelGeneration] = useState<string>("");
-  const [selCapacity, setSelCapacity] = useState<string>("");
-  const [selAttrType, setSelAttrType] = useState<string>("");
-  const [selInterface, setSelInterface] = useState<string>("");
-  const [selSeries, setSelSeries] = useState<string>("");
-  const [ownerFilter, setOwnerFilter] = useState<string>("");
-  const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
 
-  // Main tab state
-  const [mainAssets, setMainAssets] = useState<any[]>([]);
-  const [mainTotal, setMainTotal] = useState(0);
-  const [mainTotalPages, setMainTotalPages] = useState(1);
-  const [mainPage, setMainPage] = useState(1);
-  const [mainLoading, setMainLoading] = useState(true);
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.code === activeCategory),
+    [categories, activeCategory]
+  );
 
-  // Component tab state
-  const [compAssets, setCompAssets] = useState<any[]>([]);
-  const [compTotal, setCompTotal] = useState(0);
-  const [compTotalPages, setCompTotalPages] = useState(1);
-  const [compPage, setCompPage] = useState(1);
-  const [compLoading, setCompLoading] = useState(true);
-
-  const commonArgs = [selCategory, selVendor, searchQuery, ownerFilter, filterStatus, selGeneration, selCapacity, selAttrType, selInterface, selSeries] as const;
-  const selectedCategory = categories.find(c => c.code === selCategory);
-  const selectedIsMain = selectedCategory?.isMain === true;
-  const selectedIsComponent = selectedCategory?.isMain === false;
+  const selectedDefinitions = useMemo(
+    () => attributeDefinitions
+      .filter((definition) => definition.categoryId === selectedCategory?.id && definition.isActive)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
+    [attributeDefinitions, selectedCategory?.id]
+  );
 
   useEffect(() => {
-    fetch("/api/product-categories")
-      .then(res => res.json())
-      .then(json => setCategories(Array.isArray(json) ? json : json.data || []))
-      .catch(() => setCategories([]));
+    const loadMeta = async () => {
+      try {
+        const [categoriesRes, definitionsRes] = await Promise.all([
+          fetch("/api/product-categories"),
+          fetch("/api/product-attribute-definitions?activeOnly=true"),
+        ]);
+        const categoriesJson = await categoriesRes.json().catch(() => null);
+        const definitionsJson = await definitionsRes.json().catch(() => null);
+        const nextCategories = parseList(categoriesJson);
+        setCategories(nextCategories);
+        setAttributeDefinitions(parseList(definitionsJson));
+        setActiveCategory((current) => current || nextCategories[0]?.code || "");
+      } catch (error) {
+        toast.error("Không thể tải danh mục thiết bị");
+        setCategories([]);
+        setAttributeDefinitions([]);
+      }
+    };
+
+    loadMeta();
   }, []);
 
-  const fetchMain = useCallback((p = 1) => {
-    // Nếu đang lọc category thuộc tab Linh kiện → main tab trống
-    if (selectedIsComponent) {
-      setMainAssets([]); setMainTotal(0); setMainTotalPages(1); setMainLoading(false);
+  const buildParams = useCallback((targetPage: number) => {
+    const params = new URLSearchParams();
+    params.append("pageSize", String(PAGE_SIZE));
+    params.append("page", String(targetPage));
+
+    if (activeCategory) params.append("category", activeCategory);
+    if (searchQuery) params.append("search", searchQuery);
+    if (ownerFilter) params.append("owner", ownerFilter);
+    if (filterStatus !== "ALL") params.append("status", filterStatus);
+
+    for (const definition of selectedDefinitions) {
+      const value = attributeFilters[definition.key];
+      if (!value || value === "none") continue;
+      if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
+        params.append(`attr_${definition.key}`, value);
+      } else {
+        params.append(`attrLike_${definition.key}`, value);
+      }
+    }
+
+    return params;
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, selectedDefinitions, attributeFilters]);
+
+  const fetchAssets = useCallback(async (targetPage = page) => {
+    if (!activeCategory) {
+      setAssets([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
       return;
     }
-    setMainLoading(true);
-    const params = buildCommonParams(...commonArgs);
-    if (selCategory === "ALL") params.append("tabFilter", "main");
-    params.append("page", String(p));
-    fetch(`/api/assets?${params}`)
-      .then(r => r.json())
-      .then(j => {
-        const isArr = Array.isArray(j);
-        setMainAssets(isArr ? j : j.data || []);
-        setMainTotal(isArr ? j.length : j.total || 0);
-        setMainTotalPages(isArr ? 1 : j.totalPages || 1);
-      })
-      .catch(() => setMainAssets([]))
-      .finally(() => setMainLoading(false));
-  }, [...commonArgs, selectedIsComponent]);
 
-  const fetchComp = useCallback((p = 1) => {
-    // Nếu đang lọc category thuộc tab Thiết bị → comp tab trống
-    if (selectedIsMain) {
-      setCompAssets([]); setCompTotal(0); setCompTotalPages(1); setCompLoading(false);
-      return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/assets?${buildParams(targetPage).toString()}`);
+      const json: AssetResponse | any[] = await res.json();
+      if (!res.ok) throw new Error((json as any)?.error || "Không thể tải thiết bị");
+
+      const isArray = Array.isArray(json);
+      setAssets(isArray ? json : json.data || []);
+      setTotal(isArray ? json.length : json.total || 0);
+      setTotalPages(isArray ? 1 : json.totalPages || 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tải thiết bị");
+      setAssets([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
     }
-    setCompLoading(true);
-    const params = buildCommonParams(...commonArgs);
-    if (selCategory === "ALL") params.append("tabFilter", "component");
-    params.append("page", String(p));
-    fetch(`/api/assets?${params}`)
-      .then(r => r.json())
-      .then(j => {
-        const isArr = Array.isArray(j);
-        setCompAssets(isArr ? j : j.data || []);
-        setCompTotal(isArr ? j.length : j.total || 0);
-        setCompTotalPages(isArr ? 1 : j.totalPages || 1);
-      })
-      .catch(() => setCompAssets([]))
-      .finally(() => setCompLoading(false));
-  }, [...commonArgs, selectedIsMain]);
+  }, [activeCategory, buildParams, page]);
 
-  // Reset pages + refetch both on filter change
   useEffect(() => {
-    const t = setTimeout(() => {
-      setMainPage(1); setCompPage(1);
-      fetchMain(1); fetchComp(1);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [...commonArgs]);
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchAssets(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions]);
 
-  // Fetch only the current tab when its page changes
-  useEffect(() => { fetchMain(mainPage); }, [mainPage]);
-  useEffect(() => { fetchComp(compPage); }, [compPage]);
+  useEffect(() => {
+    fetchAssets(page);
+  }, [page]);
 
-  const refreshAll = () => { fetchMain(mainPage); fetchComp(compPage); };
+  const refreshAll = () => fetchAssets(page);
 
-  const onCategoryChange = (val: string) => {
-    setSelCategory(val);
-    setSelGeneration(""); setSelCapacity(""); setSelAttrType(""); setSelInterface(""); setSelSeries("");
-    const category = categories.find(c => c.code === val);
-    if (category?.isMain === false) setActiveTab("component");
-    else if (category?.isMain === true) setActiveTab("main");
+  const handleCategoryChange = (categoryCode: string) => {
+    setActiveCategory(categoryCode);
+    setAttributeFilters({});
+    setPage(1);
   };
 
-  const totalDisplayed = activeTab === "main" ? mainTotal : compTotal;
+  const setAttributeFilter = (key: string, value: string) => {
+    setAttributeFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const renderAttributeFilter = (definition: ProductAttributeDefinition) => {
+    const value = attributeFilters[definition.key] || "";
+
+    if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
+      const options = definition.inputType === "BOOLEAN"
+        ? [
+          { id: "true", value: "true", label: "Có" },
+          { id: "false", value: "false", label: "Không" },
+        ]
+        : definition.options.filter((option) => option.isActive !== false);
+
+      return (
+        <Select key={definition.id} value={value || "none"} onValueChange={(next) => setAttributeFilter(definition.key, next)}>
+          <SelectTrigger className="w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0">
+            <SelectValue placeholder={definition.label} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">-- {definition.label} --</SelectItem>
+            {options.map((option) => (
+              <SelectItem key={option.id} value={option.value}>
+                {option.label || option.value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    return (
+      <Input
+        key={definition.id}
+        placeholder={definition.label}
+        value={value}
+        type={definition.inputType === "NUMBER" ? "number" : "text"}
+        onChange={(event) => setAttributeFilter(definition.key, event.target.value)}
+        className="w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0 text-sm"
+      />
+    );
+  };
 
   return (
     <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
-
-      {/* ================= HEADER & TOOLBAR ================= */}
       <div className="flex flex-col gap-6 mb-8">
-
         <div className="flex flex-col gap-1.5">
           <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-900 tracking-tight">
             <div className="p-2 bg-blue-100/50 text-blue-600 rounded-xl border border-blue-200/50 shadow-sm">
@@ -175,25 +207,22 @@ export default function AssetListPage() {
             Quản lý Thiết bị
           </h1>
           <p className="text-slate-500 font-medium ml-1 mt-1">
-            Đang hiển thị: <strong className="text-blue-600 text-base">{totalDisplayed}</strong> thiết bị.
+            {selectedCategory?.name || "Danh mục"}: <strong className="text-blue-600 text-base">{total}</strong> thiết bị.
           </p>
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* HÀNG 1: THANH TÌM KIẾM CHIẾM FULL WIDTH */}
           <div className="relative w-full group">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
             <Input
               placeholder="Tìm Serial Number, Tên thiết bị..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               className="pl-10 h-11 w-full bg-white border-slate-200 rounded-xl shadow-sm focus-visible:ring-1 focus-visible:ring-blue-500 transition-all hover:border-slate-300 text-base"
             />
           </div>
 
-          {/* HÀNG 2: FILTER & HÀNH ĐỘNG IMPORT/EXPORT */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
-
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="h-11 w-full sm:w-[200px] bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-medium">
@@ -220,10 +249,10 @@ export default function AssetListPage() {
                 variant="outline"
                 size="icon"
                 onClick={refreshAll}
-                disabled={mainLoading || compLoading}
+                disabled={loading}
                 className="h-11 w-11 shrink-0 bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all"
               >
-                <RefreshCw className={`w-4 h-4 text-slate-600 ${(mainLoading || compLoading) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? "animate-spin" : ""}`} />
               </Button>
 
               <Button
@@ -238,7 +267,6 @@ export default function AssetListPage() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
               <ImportAssetModal onRefresh={refreshAll} />
-
               <Button
                 variant="outline"
                 className="bg-white border-slate-200 hover:bg-slate-50 shadow-sm text-slate-700 h-10 whitespace-nowrap"
@@ -247,165 +275,68 @@ export default function AssetListPage() {
                 <Download className="w-4 h-4 mr-2 text-green-600 shrink-0" />
                 Export
               </Button>
-
-              <div className="w-[1px] h-6 bg-slate-200 mx-1 hidden sm:block"></div>
-
+              <div className="w-[1px] h-6 bg-slate-200 mx-1 hidden sm:block" />
               <div className="shrink-0">
                 <CreateAssetModal onRefresh={refreshAll} />
               </div>
             </div>
           </div>
 
-          {/* HÀNG 3: DYNAMIC ATTR FILTERS (HORIZONTAL SCROLL) */}
-          <div className="flex bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3 overflow-x-auto scrollbar-hide">
+          <div className="flex bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3 overflow-x-auto">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-700 shrink-0 border-r border-slate-200 pr-3">
               <Filter className="w-4 h-4 text-blue-600" />
-              Lọc Nâng Cao
+              Lọc {selectedCategory?.name || "danh mục"}
             </div>
 
-            <div className="w-[160px] shrink-0">
-              <Select value={selCategory} onValueChange={onCategoryChange}>
-                <SelectTrigger className="bg-slate-50 h-9 font-medium border-slate-300"><SelectValue placeholder="Chọn Category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả danh mục</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.code}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* DYNAMIC CATEGORY FILTERS */}
-            {selCategory === "MEMORY" && (
-              <>
-                <Select value={selGeneration} onValueChange={setSelGeneration}>
-                  <SelectTrigger className="w-[130px] h-9 bg-blue-50/50 border-blue-200 shrink-0"><SelectValue placeholder="Thế hệ RAM" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Tất cả --</SelectItem>
-                    {getGenerations().map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Dung lượng..."
-                  value={selCapacity}
-                  onChange={e => setSelCapacity(e.target.value)}
-                  className="w-[120px] h-9 bg-blue-50/50 border-blue-200 shrink-0 text-sm"
-                />
-              </>
+            {selectedDefinitions.length > 0 ? (
+              selectedDefinitions.map(renderAttributeFilter)
+            ) : (
+              <span className="text-sm text-slate-400 italic py-2 shrink-0">Danh mục này chưa có thuộc tính lọc.</span>
             )}
 
-            {selCategory === "STORAGE" && (
-              <>
-                <Select value={selAttrType} onValueChange={setSelAttrType}>
-                  <SelectTrigger className="w-[130px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0"><SelectValue placeholder="Loại ổ cứng" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Tất cả --</SelectItem>
-                    {getStorageTypes().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Dung lượng..."
-                  value={selCapacity}
-                  onChange={e => setSelCapacity(e.target.value)}
-                  className="w-[120px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0 text-sm"
-                />
-                <Select value={selInterface} onValueChange={setSelInterface}>
-                  <SelectTrigger className="w-[120px] h-9 bg-emerald-50/50 border-emerald-200 shrink-0"><SelectValue placeholder="Giao tiếp" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Tất cả --</SelectItem>
-                    {getStorageInterfaces().map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-
-            {selCategory === "CPU" && (
-              <Select value={selSeries} onValueChange={setSelSeries}>
-                <SelectTrigger className="w-[140px] h-9 bg-purple-50/50 border-purple-200 shrink-0"><SelectValue placeholder="Dòng (Series)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-- Tất cả --</SelectItem>
-                  {getCpuSeries().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-
-            <div className="w-[1px] h-6 bg-slate-200 shrink-0"></div>
-
-            <div className="relative w-[180px] shrink-0">
-              <Input
-                placeholder="Lọc theo chủ sở hữu..."
-                value={ownerFilter}
-                onChange={(e) => setOwnerFilter(e.target.value)}
-                className="h-9 bg-yellow-50/50 border-yellow-200 text-sm placeholder:text-yellow-600/60"
-              />
-            </div>
+            <div className="w-[1px] h-6 bg-slate-200 shrink-0" />
+            <Input
+              placeholder="Lọc theo chủ sở hữu..."
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className="w-[180px] h-9 bg-yellow-50/50 border-yellow-200 text-sm placeholder:text-yellow-600/60 shrink-0"
+            />
           </div>
         </div>
       </div>
 
-      {/* ================= TABS CONTAINER ================= */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="inline-flex h-auto p-1 bg-slate-100/80 rounded-lg mb-6 border border-slate-200/60">
-          <TabsTrigger
-            value="main"
-            className="flex items-center gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all font-medium"
-          >
-            <Server className="w-4 h-4 text-blue-600 hidden sm:block" />
-            <span>Thiết bị</span>
-            <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {mainTotal}
-            </span>
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="component"
-            className="flex items-center gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all font-medium"
-          >
-            <Cpu className="w-4 h-4 text-purple-600 hidden sm:block" />
-            <span>Linh kiện</span>
-            <span className="ml-2 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {compTotal}
-            </span>
-          </TabsTrigger>
+      <Tabs value={activeCategory} onValueChange={handleCategoryChange} className="w-full">
+        <TabsList className="inline-flex h-auto max-w-full overflow-x-auto p-1 bg-slate-100/80 rounded-lg mb-6 border border-slate-200/60">
+          {categories.map((category) => (
+            <TabsTrigger
+              key={category.id}
+              value={category.code}
+              className="flex items-center gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all font-medium whitespace-nowrap"
+            >
+              <span>{category.name}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="main" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <AssetTable data={mainAssets} loading={mainLoading} onRefresh={refreshAll} />
-          </div>
-          {mainTotalPages > 1 && (
-            <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
-              <p className="text-sm text-slate-500">Trang <strong>{mainPage}</strong> / {mainTotalPages} · Tổng <strong>{mainTotal}</strong></p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setMainPage(1)} disabled={mainPage === 1}>«</Button>
-                <Button variant="outline" size="sm" onClick={() => setMainPage(p => Math.max(1, p - 1))} disabled={mainPage === 1}>‹</Button>
-                <span className="text-sm font-medium px-2">{mainPage}</span>
-                <Button variant="outline" size="sm" onClick={() => setMainPage(p => Math.min(mainTotalPages, p + 1))} disabled={mainPage === mainTotalPages}>›</Button>
-                <Button variant="outline" size="sm" onClick={() => setMainPage(mainTotalPages)} disabled={mainPage === mainTotalPages}>»</Button>
-              </div>
+        {categories.map((category) => (
+          <TabsContent key={category.id} value={category.code} className="focus-visible:outline-none focus-visible:ring-0 mt-0">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <AssetTable data={assets} loading={loading} onRefresh={refreshAll} />
             </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="component" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <AssetTable data={compAssets} loading={compLoading} onRefresh={refreshAll} />
-          </div>
-          {compTotalPages > 1 && (
-            <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
-              <p className="text-sm text-slate-500">Trang <strong>{compPage}</strong> / {compTotalPages} · Tổng <strong>{compTotal}</strong></p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCompPage(1)} disabled={compPage === 1}>«</Button>
-                <Button variant="outline" size="sm" onClick={() => setCompPage(p => Math.max(1, p - 1))} disabled={compPage === 1}>‹</Button>
-                <span className="text-sm font-medium px-2">{compPage}</span>
-                <Button variant="outline" size="sm" onClick={() => setCompPage(p => Math.min(compTotalPages, p + 1))} disabled={compPage === compTotalPages}>›</Button>
-                <Button variant="outline" size="sm" onClick={() => setCompPage(compTotalPages)} disabled={compPage === compTotalPages}>»</Button>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
+                <p className="text-sm text-slate-500">Trang <strong>{page}</strong> / {totalPages} · Tổng <strong>{total}</strong></p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1}>«</Button>
+                  <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>‹</Button>
+                  <span className="text-sm font-medium px-2">{page}</span>
+                  <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</Button>
+                  <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</Button>
+                </div>
               </div>
-            </div>
-          )}
-        </TabsContent>
+            )}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

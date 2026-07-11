@@ -18,15 +18,61 @@ export async function PATCH(req: Request, props: Props) {
       return NextResponse.json({ error: "Tên danh mục là bắt buộc" }, { status: 400 });
     }
 
-    const category = await prisma.productCategory.update({
-      where: { id },
-      data: {
-        ...(code ? { code } : {}),
-        name,
-        description: body.description || null,
-        isMain: Boolean(body.isMain),
-      },
-      include: { _count: { select: { products: true } } },
+    const isMain = Boolean(body.isMain);
+    const category = await prisma.$transaction(async (tx) => {
+      const updated = await tx.productCategory.update({
+        where: { id },
+        data: {
+          ...(code ? { code } : {}),
+          name,
+          description: body.description || null,
+          isMain,
+        },
+        include: { _count: { select: { products: true } } },
+      });
+
+      if (isMain) {
+        await tx.productAttributeDefinition.upsert({
+          where: { categoryId_key: { categoryId: id, key: "uHeight" } },
+          update: {
+            label: "Chiều cao rack (U)",
+            inputType: "NUMBER",
+            isActive: true,
+          },
+          create: {
+            categoryId: id,
+            key: "uHeight",
+            label: "Chiều cao rack (U)",
+            inputType: "NUMBER",
+            required: false,
+            sortOrder: 5,
+            isActive: true,
+          },
+        });
+      } else {
+        await tx.productAttributeDefinition.updateMany({
+          where: { categoryId: id, key: "uHeight" },
+          data: { isActive: false },
+        });
+        await tx.$executeRaw`
+          UPDATE "Product"
+          SET "attributes" = "attributes" - 'uHeight'
+          WHERE "categoryId" = ${id}
+            AND "attributes" ? 'uHeight'
+        `;
+        await tx.$executeRaw`
+          UPDATE "Asset"
+          SET
+            "rackUnit" = NULL,
+            "previousRackUnit" = NULL
+          WHERE "productId" IN (
+            SELECT "id" FROM "Product" WHERE "categoryId" = ${id}
+          )
+          AND ("rackUnit" IS NOT NULL OR "previousRackUnit" IS NOT NULL)
+        `;
+      }
+
+      return updated;
     });
 
     return NextResponse.json({ data: category });
@@ -65,4 +111,3 @@ export async function DELETE(req: Request, props: Props) {
     return NextResponse.json({ error: "Lỗi xóa danh mục" }, { status: 500 });
   }
 }
-

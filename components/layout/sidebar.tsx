@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import { useSidebar } from "@/context/sidebar-context";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, Package, Server, Layers,
+  LayoutDashboard, Package, Server,
   ChevronLeft, ChevronRight, Monitor, History,
   MapPin, FileText, Users, ClipboardList,
 } from "lucide-react";
@@ -44,7 +44,6 @@ export function Sidebar() {
           { label: "Sản phẩm", href: "/products", icon: Package },
           { label: "Thiết bị", href: "/assets", icon: Server },
           { label: "Vị trí", href: "/warehouses", icon: MapPin },
-          { label: "Lắp ráp", href: "/assembly", icon: Layers },
           // { label: "Hợp đồng", href: "/rentals", icon: FileText }, // Ẩn - không dùng tính năng cho thuê
           { label: "Bàn giao", href: "/handovers", icon: ClipboardList },
           { label: "Tủ Rack", href: "/racks", icon: Server },

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/route";
+import { getProductRackUnitHeight } from "@/lib/product-u-height";
 
 export async function POST(req: Request) {
     try {
@@ -68,13 +69,17 @@ export async function POST(req: Request) {
 
         // 5. Build Dictionaries for Validation (Products, Warehouses, Racks)
         const [products, warehouses, racks] = await Promise.all([
-            prisma.product.findMany({ select: { id: true, modelNumber: true } }),
+            prisma.product.findMany({ select: { id: true, modelNumber: true, attributes: true, productCategory: { select: { isMain: true } } } }),
             prisma.warehouse.findMany({ select: { id: true, name: true } }),
             prisma.rack.findMany({ select: { id: true, name: true, warehouseId: true, totalUnits: true } })
         ]);
 
         // Lookup Maps for O(1) checking
-        const productMap = new Map(products.map(p => [p.modelNumber.toLowerCase(), p.id]));
+        const productMap = new Map(products.map(p => [p.modelNumber.toLowerCase(), {
+            id: p.id,
+            uHeight: getProductRackUnitHeight(p),
+            isMain: p.productCategory?.isMain === true,
+        }]));
         const warehouseMap = new Map(warehouses.map(w => [w.name.toLowerCase(), w.id]));
         const rackMap = new Map(racks.map(r => [`${r.name.toLowerCase()}-${r.warehouseId}`, r]));
         const validStatuses = ["IN_STOCK", "INSTALLED", "DEPLOYED", "MAINTENANCE", "FAULTY"];
@@ -115,10 +120,15 @@ export async function POST(req: Request) {
 
             // B. Product Model mapping
             let productId = null;
+            let uHeight = 1;
+            let productIsMain = false;
             if (!model) {
                 errors.push("Missing ProductModel");
             } else {
-                productId = productMap.get(model.toLowerCase());
+                const product = productMap.get(model.toLowerCase());
+                productId = product?.id || null;
+                uHeight = product?.uHeight || 1;
+                productIsMain = product?.isMain || false;
                 if (!productId) errors.push(`ProductModel not found: ${model}`);
             }
 
@@ -133,7 +143,7 @@ export async function POST(req: Request) {
 
             // D. Rack mapping (Optional)
             let rackId = null;
-            let rackUnit = rackUnitStr ? parseInt(rackUnitStr) : null;
+            const rackUnit = rackUnitStr ? parseInt(rackUnitStr) : null;
 
             if (rkName) {
                 if (!warehouseId) {
@@ -145,7 +155,10 @@ export async function POST(req: Request) {
                     } else {
                         rackId = mappedRack.id;
                         // Check U limits (only for DATACENTER racks with totalUnits)
-                        if (rackUnit && mappedRack.totalUnits && (rackUnit < 1 || rackUnit > mappedRack.totalUnits)) {
+                        if (productIsMain && rackUnit && rackUnit < 1) {
+                            errors.push(`RackUnit must be greater than or equal to 1`);
+                        }
+                        if (productIsMain && rackUnit && mappedRack.totalUnits && (rackUnit < 1 || rackUnit > mappedRack.totalUnits)) {
                             errors.push(`RackUnit ${rackUnit} exceeds Rack limits (1-${mappedRack.totalUnits})`);
                         }
                     }
@@ -186,7 +199,8 @@ export async function POST(req: Request) {
                     productId,
                     warehouseId,
                     rackId,
-                    rackUnit,
+                    rackUnit: productIsMain ? rackUnit : null,
+                    uHeight,
                     status,
                     parentId,
                     owner,
@@ -227,6 +241,7 @@ export async function POST(req: Request) {
                         status: vh.status as any,
                         notes: vh.notes,
                         owner: vh.owner || null,
+                        uHeight: vh.uHeight,
                         product: { connect: { id: vh.productId } },
                         warehouse: { connect: { id: vh.warehouseId } },
                     };

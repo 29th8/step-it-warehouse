@@ -170,8 +170,8 @@ export default function RackDetailPage() {
                               onClick={() => compCount > 0 && toggleExpand(asset.id)}
                             >
                               <div className="flex items-center gap-3">
-                                <Badge variant="outline" className="w-10 h-6 flex items-center justify-center bg-slate-100 font-mono text-xs border-slate-200 shrink-0">
-                                  U{asset.rackUnit}
+                                <Badge variant="outline" className="min-w-10 h-6 flex items-center justify-center bg-slate-100 font-mono text-xs border-slate-200 shrink-0">
+                                  {asset.rackUnit ? `U${asset.rackUnit}` : "Không U"}
                                 </Badge>
                                 <div>
                                   <p className="font-semibold text-sm text-slate-800">{asset.product?.name}</p>

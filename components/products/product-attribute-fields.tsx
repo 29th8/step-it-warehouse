@@ -47,6 +47,7 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
         {activeDefinitions.map((definition) => {
           const label = `${definition.label}${definition.required ? " *" : ""}`;
           const currentValue = values?.[definition.key] ?? "";
+          const isRackUnitHeight = definition.key === "uHeight";
 
           if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
             const options = definition.inputType === "BOOLEAN"
@@ -83,10 +84,16 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
               <label className="text-xs font-medium text-slate-700">{label}</label>
               <Input
                 type={definition.inputType === "NUMBER" ? "number" : "text"}
+                min={isRackUnitHeight ? 1 : undefined}
+                step={isRackUnitHeight ? 1 : undefined}
                 className="bg-white"
                 value={currentValue}
                 placeholder={`Nhập ${definition.label.toLowerCase()}`}
-                onChange={(event) => setValue(definition.key, event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (isRackUnitHeight && value !== "" && Number(value) < 1) return;
+                  setValue(definition.key, value);
+                }}
               />
             </div>
           );
