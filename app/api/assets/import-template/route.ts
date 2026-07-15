@@ -7,19 +7,21 @@ export async function GET(req: Request) {
         workbook.creator = "Step-IT System";
         workbook.created = new Date();
 
-        const sheet = workbook.addWorksheet("Template_Import_Assets");
+        const sheet = workbook.addWorksheet("Mau_Import_Thiet_Bi");
 
         const columnsDef = [
-            { header: "SerialNumber", key: "SerialNumber", width: 25 },
-            { header: "ProductModel", key: "ProductModel", width: 25 },
-            { header: "WarehouseName", key: "WarehouseName", width: 25 },
-            { header: "RackName", key: "RackName", width: 20 },
-            { header: "RackUnit", key: "RackUnit", width: 12 },
-            { header: "UHeight", key: "UHeight", width: 12 },
-            { header: "Status", key: "Status", width: 15 },
-            { header: "ParentSerial", key: "ParentSerial", width: 25 },
-            { header: "Notes", key: "Notes", width: 40 },
-            { header: "Owner", key: "Owner", width: 15 },
+            { header: "Số serial", key: "serialNumber", width: 25 },
+            { header: "Mã sản phẩm", key: "productModel", width: 25 },
+            { header: "Tên kho", key: "warehouseName", width: 25 },
+            { header: "Tên rack", key: "rackName", width: 20 },
+            { header: "Vị trí U", key: "rackUnit", width: 12 },
+            { header: "Chiều cao U", key: "uHeight", width: 12 },
+            { header: "Trạng thái", key: "status", width: 18 },
+            { header: "Serial thiết bị cha", key: "parentSerial", width: 25 },
+            { header: "Loại slot", key: "installSlotType", width: 16 },
+            { header: "Tên slot DIMM/Bay", key: "installSlotName", width: 20 },
+            { header: "Ghi chú", key: "notes", width: 40 },
+            { header: "Chủ sở hữu", key: "owner", width: 18 },
         ];
 
         sheet.columns = columnsDef;
@@ -34,16 +36,48 @@ export async function GET(req: Request) {
 
         // Add exactly one example row
         sheet.addRow({
-            SerialNumber: "SN-EXAMPLE-001",
-            ProductModel: "DL380-GEN10",
-            WarehouseName: "Kho Nội Chính",
-            RackName: "Rack A1",
-            RackUnit: 12,
-            UHeight: 2,
-            Status: "IN_STOCK",
-            ParentSerial: "",
-            Notes: "Đây là dữ liệu mẫu, hãy xoá dòng này trước khi import.",
-            Owner: "STEP",
+            serialNumber: "SN-EXAMPLE-001",
+            productModel: "DL380-GEN10",
+            warehouseName: "Kho Nội Chính",
+            rackName: "Rack A1",
+            rackUnit: 12,
+            uHeight: 2,
+            status: "IN_STOCK",
+            parentSerial: "",
+            installSlotType: "",
+            installSlotName: "",
+            notes: "Đây là dữ liệu mẫu, hãy xoá dòng này trước khi import.",
+            owner: "STEP",
+        });
+
+        sheet.addRow({
+            serialNumber: "RAM-EXAMPLE-001",
+            productModel: "RAM-32G-ECC",
+            warehouseName: "Kho Nội Chính",
+            rackName: "",
+            rackUnit: "",
+            uHeight: "",
+            status: "INSTALLED",
+            parentSerial: "SN-SERVER-001",
+            installSlotType: "DIMM",
+            installSlotName: "DIMM 1",
+            notes: "Ví dụ RAM đã lắp vào server.",
+            owner: "STEP",
+        });
+
+        sheet.addRow({
+            serialNumber: "DISK-EXAMPLE-001",
+            productModel: "SSD-192-ENT",
+            warehouseName: "Kho Nội Chính",
+            rackName: "",
+            rackUnit: "",
+            uHeight: "",
+            status: "INSTALLED",
+            parentSerial: "SN-SERVER-001",
+            installSlotType: "BAY",
+            installSlotName: "Bay 1",
+            notes: "Ví dụ ổ cứng đã lắp vào server.",
+            owner: "STEP",
         });
 
         const buffer = await workbook.xlsx.writeBuffer();

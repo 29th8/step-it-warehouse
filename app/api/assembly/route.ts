@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
+import { componentSlotType, getSlotNames, isServerProduct } from "@/lib/server-slots";
+
+function assertParentInStock(parentAsset: { status?: string | null; serialNumber?: string | null }) {
+  if (parentAsset.status !== "IN_STOCK") {
+    throw new Error(`Chỉ được lắp ráp khi server đang ở trạng thái Trong kho. Vui lòng chuyển server ${parentAsset.serialNumber || ""} về Trong kho trước.`);
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +29,7 @@ export async function POST(req: Request) {
 
     // 2. LẤY DỮ LIỆU
     const body = await req.json();
-    const { type, parentId, componentId, componentIds } = body;
+    const { type, parentId, componentIds } = body;
 
     // ===============================================
     // XỬ LÝ LẮP RÁP HÀNG LOẠT (ATTACH_BULK)
@@ -32,46 +39,189 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Thiếu ID máy mẹ hoặc danh sách linh kiện" }, { status: 400 });
       }
 
-      const parentAsset = await prisma.asset.findUnique({ where: { id: parentId } });
+      const parentAsset = await prisma.asset.findUnique({
+        where: { id: parentId },
+        include: { product: { include: { productCategory: true } } },
+      });
       if (!parentAsset) {
         return NextResponse.json({ error: "Không tìm thấy thiết bị mẹ" }, { status: 404 });
       }
+      assertParentInStock(parentAsset);
 
       const result = await prisma.$transaction(async (tx) => {
-        // Cập nhật hàng loạt chỉ những linh kiện đang rảnh rỗi (parentId is null)
-        const updateResult = await tx.asset.updateMany({
+        const components = await tx.asset.findMany({
           where: {
             id: { in: componentIds },
             parentId: null,
             status: 'IN_STOCK',
           },
-          data: {
-            parentId: parentId,
-            status: "INSTALLED",
-            warehouseId: parentAsset.warehouseId,
-            rackId: parentAsset.rackId,
-            rackUnit: null,
-          },
+          include: { product: { include: { productCategory: true } } },
         });
 
-        // Nếu không có linh kiện nào hợp lệ được cập nhật
-        if (updateResult.count === 0) {
+        if (components.length === 0) {
           throw new Error("Không có linh kiện hợp lệ nào được tìm thấy để lắp ráp. Có thể chúng đã được lắp đặt trước đó.");
         }
 
-        // Ghi log cho TẤT CẢ linh kiện đã được lắp thành công
-        const logData = componentIds.map((cId: string) => ({
-          type: "ASSEMBLE" as const,
-          note: `Lắp ráp vào thiết bị mẹ [SN: ${parentAsset.serialNumber}].`,
-          assetId: cId,
-          userId: userId,
-        }));
-        await tx.stockMovement.createMany({ data: logData });
-        
-        return updateResult;
+        const slotAssignments = Array.isArray(body.slotAssignments) ? body.slotAssignments : [];
+        const slotByComponentId = new Map<string, { slotType?: string; slotName?: string }>(
+          slotAssignments.map((item: any) => [item.componentId, item])
+        );
+        const occupiedSlots = await tx.asset.findMany({
+          where: {
+            parentId,
+            installSlotType: { not: null },
+            installSlotName: { not: null },
+          },
+          select: { id: true, installSlotType: true, installSlotName: true },
+        });
+        const usedSlotKeys = new Set(occupiedSlots.map((item) => `${item.installSlotType}:${item.installSlotName}`));
+
+        let count = 0;
+        for (const component of components) {
+          const requiredSlotType = componentSlotType(component);
+          const assignment = slotByComponentId.get(component.id);
+          let installSlotType: string | null = null;
+          let installSlotName: string | null = null;
+
+          if (requiredSlotType) {
+            if (!isServerProduct(parentAsset.product)) {
+              throw new Error("RAM và ổ cứng chỉ được lắp vào Server.");
+            }
+
+            if (assignment?.slotType !== requiredSlotType || !assignment?.slotName) {
+              throw new Error(`${component.serialNumber} bắt buộc chọn ${requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"} khi lắp mới/lắp lại.`);
+            }
+            const validSlots = getSlotNames(parentAsset.product, requiredSlotType);
+            if (validSlots.length === 0) {
+              throw new Error("Server này chưa khai báo số DIMM/Bay trong thông tin sản phẩm.");
+            }
+            if (!validSlots.includes(assignment.slotName)) {
+              throw new Error(`Slot ${assignment.slotName} không tồn tại trên server này.`);
+            }
+
+            const slotKey = `${assignment.slotType}:${assignment.slotName}`;
+            if (usedSlotKeys.has(slotKey)) {
+              throw new Error(`Slot ${assignment.slotName} đã có linh kiện khác.`);
+            }
+            usedSlotKeys.add(slotKey);
+            installSlotType = assignment.slotType;
+            installSlotName = assignment.slotName;
+          }
+
+          await tx.asset.update({
+            where: { id: component.id },
+            data: {
+              parentId,
+              status: "INSTALLED",
+              warehouseId: parentAsset.warehouseId,
+              rackId: parentAsset.rackId,
+              rackUnit: null,
+              installSlotType,
+              installSlotName,
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              type: "ASSEMBLE",
+              note: `Lắp ráp vào thiết bị mẹ [SN: ${parentAsset.serialNumber}]${installSlotName ? ` tại ${installSlotName}` : ""}.`,
+              assetId: component.id,
+              userId,
+            },
+          });
+          count++;
+        }
+
+        return { count };
       });
       
       return NextResponse.json({ data: { message: `Đã lắp ráp thành công ${result.count} linh kiện.` } });
+    }
+
+    else if (type === "UPDATE_SLOTS") {
+      if (!parentId || !Array.isArray(body.slotAssignments) || body.slotAssignments.length === 0) {
+        return NextResponse.json({ error: "Thiếu ID máy mẹ hoặc danh sách slot" }, { status: 400 });
+      }
+
+      const parentAsset = await prisma.asset.findUnique({
+        where: { id: parentId },
+        include: { product: { include: { productCategory: true } } },
+      });
+      if (!parentAsset) {
+        return NextResponse.json({ error: "Không tìm thấy thiết bị mẹ" }, { status: 404 });
+      }
+      if (!isServerProduct(parentAsset.product)) {
+        return NextResponse.json({ error: "Chỉ Server mới có DIMM/Bay." }, { status: 400 });
+      }
+      assertParentInStock(parentAsset);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const ids = body.slotAssignments.map((item: any) => item.componentId);
+        const components = await tx.asset.findMany({
+          where: { id: { in: ids }, parentId },
+          include: { product: { include: { productCategory: true } } },
+        });
+        const componentMap = new Map(components.map((item) => [item.id, item]));
+
+        const occupiedSlots = await tx.asset.findMany({
+          where: {
+            parentId,
+            id: { notIn: ids },
+            installSlotType: { not: null },
+            installSlotName: { not: null },
+          },
+          select: { installSlotType: true, installSlotName: true },
+        });
+        const usedSlotKeys = new Set(occupiedSlots.map((item) => `${item.installSlotType}:${item.installSlotName}`));
+
+        let count = 0;
+        for (const assignment of body.slotAssignments as Array<{ componentId: string; slotType?: string; slotName?: string }>) {
+          const component = componentMap.get(assignment.componentId);
+          if (!component) throw new Error("Không tìm thấy linh kiện trong server này.");
+
+          const requiredSlotType = componentSlotType(component);
+          if (!requiredSlotType) continue;
+          if (assignment.slotType !== requiredSlotType || !assignment.slotName) {
+            throw new Error(`${component.serialNumber} bắt buộc chọn ${requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"}.`);
+          }
+
+          const validSlots = getSlotNames(parentAsset.product, requiredSlotType);
+          if (validSlots.length === 0) {
+            throw new Error("Server này chưa khai báo số DIMM/Bay trong thông tin sản phẩm.");
+          }
+          if (!validSlots.includes(assignment.slotName)) {
+            throw new Error(`Slot ${assignment.slotName} không tồn tại trên server này.`);
+          }
+
+          const slotKey = `${assignment.slotType}:${assignment.slotName}`;
+          if (usedSlotKeys.has(slotKey)) {
+            throw new Error(`Slot ${assignment.slotName} đã có linh kiện khác.`);
+          }
+          usedSlotKeys.add(slotKey);
+
+          await tx.asset.update({
+            where: { id: component.id },
+            data: {
+              installSlotType: assignment.slotType,
+              installSlotName: assignment.slotName,
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              type: "TRANSFER",
+              note: `Cập nhật vị trí slot trong ${parentAsset.serialNumber}: ${component.serialNumber} -> ${assignment.slotName}.`,
+              assetId: component.id,
+              userId,
+            },
+          });
+          count++;
+        }
+
+        return { count };
+      });
+
+      return NextResponse.json({ data: { message: `Đã cập nhật ${result.count} vị trí slot.` } });
     }
 
     // ===============================================
@@ -92,6 +242,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Không tìm thấy linh kiện hợp lệ để tháo" }, { status: 400 });
       }
 
+      const lockedParent = components.find((component) => component.parent?.status !== "IN_STOCK")?.parent;
+      if (lockedParent) {
+        throw new Error(`Chỉ được tháo/lắp linh kiện khi server đang ở trạng thái Trong kho. Vui lòng chuyển server ${lockedParent.serialNumber || ""} về Trong kho trước.`);
+      }
+
       const result = await prisma.$transaction(async (tx) => {
         const updateResult = await tx.asset.updateMany({
           where: { id: { in: componentIds }, parentId: { not: null } },
@@ -100,6 +255,8 @@ export async function POST(req: Request) {
             status: "IN_STOCK",
             rackId: null,
             rackUnit: null,
+            installSlotType: null,
+            installSlotName: null,
           },
         });
 

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Loader2, Save, X, Server, Layers } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Plus, Loader2, Save, X, Server, Layers } from "lucide-react";
 import { handleApiResponse } from "@/lib/api-handler";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   getStorageInterfaces,
   getCpuSeries
 } from "@/lib/product-options";
+import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 // Định nghĩa Interfaces
 interface BasicItem { id: string; name: string; warehouseId?: string; type?: string; }
@@ -26,12 +27,21 @@ interface ProductItem {
   category: string;
   type: string;
   brand?: string;
-  productCategory?: { isMain?: boolean };
+  attributes?: Record<string, unknown> | null;
+  productCategory?: { isMain?: boolean; code?: string };
 }
 
 interface CreateAssetProps {
   onRefresh: () => void;
 }
+
+type AiAssemblyResult = {
+  compatible: boolean;
+  confidence?: number;
+  aiUnavailable?: boolean;
+  aiMessage?: string;
+  issues: { severity: "ERROR" | "WARNING"; message: string; source: "SYSTEM" | "HERMES" }[];
+};
 
 function RackUnitFields({ formData, setFormData, racksList, allowRackUnit }: {
   formData: any;
@@ -88,8 +98,11 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [warehousesList, setWarehousesList] = useState<BasicItem[]>([]);
   const [racksList, setRacksList] = useState<BasicItem[]>([]);
-  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: { name: string } }[]>([]);
+  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: ProductItem }[]>([]);
   const [parentSearch, setParentSearch] = useState("");
+  const [occupiedSlots, setOccupiedSlots] = useState<Set<string>>(new Set());
+  const [aiChecking, setAiChecking] = useState(false);
+  const [aiResult, setAiResult] = useState<AiAssemblyResult | null>(null);
 
   // States bộ lọc tầng
   const [selCategory, setSelCategory] = useState<string>("");
@@ -115,11 +128,16 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     owner: "",
     notes: "",
     parentId: "",
+    installSlotType: "",
+    installSlotName: "",
   };
   const [formData, setFormData] = useState(initialForm);
   const selectedProduct = productsList.find(p => p.id === formData.productId);
   const selectedProductIsMain = selectedProduct?.productCategory?.isMain === true;
   const selectedProductIsComponent = selectedProduct?.productCategory?.isMain === false;
+  const requiredSlotType = componentSlotType({ product: selectedProduct });
+  const selectedParent = parentsList.find(p => p.id === formData.parentId);
+  const slotOptions = selectedParent ? getSlotNames(selectedParent.product, requiredSlotType) : [];
 
   const safeJson = async (res: Response) => {
     if (!res.ok) return [];
@@ -212,6 +230,79 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     return () => clearTimeout(timer);
   }, [selCategory, selType, selGeneration, selCapacity, selAttrType, selInterface, selSeries, searchQuery]);
 
+  React.useEffect(() => {
+    if (!formData.parentId || !requiredSlotType) {
+      setOccupiedSlots(new Set());
+      return;
+    }
+
+    const loadOccupiedSlots = async () => {
+      try {
+        const res = await fetch(`/api/assets?parentId=${formData.parentId}`);
+        const json = await res.json();
+        const children = Array.isArray(json) ? json : json.data || [];
+        setOccupiedSlots(new Set(
+          children
+            .filter((item: any) => item.installSlotType && item.installSlotName)
+            .map((item: any) => `${item.installSlotType}:${item.installSlotName}`)
+        ));
+      } catch {
+        setOccupiedSlots(new Set());
+      }
+    };
+
+    loadOccupiedSlots();
+  }, [formData.parentId, requiredSlotType]);
+
+  React.useEffect(() => {
+    if (!formData.parentId || !selectedProductIsComponent || !selectedProduct?.id) {
+      setAiResult(null);
+      setAiChecking(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setAiChecking(true);
+      try {
+        const res = await fetch("/api/ai/assembly/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parentId: formData.parentId,
+            componentProductIds: [selectedProduct.id],
+          }),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json.error || "Lỗi kiểm tra AI");
+        setAiResult({
+          compatible: json.compatible !== false,
+          confidence: json.confidence,
+          aiUnavailable: json.aiUnavailable,
+          aiMessage: json.aiMessage,
+          issues: Array.isArray(json.issues) ? json.issues : [],
+        });
+      } catch (error: any) {
+        if (!cancelled) {
+          setAiResult({
+            compatible: true,
+            aiUnavailable: true,
+            aiMessage: error.message || "Không thể kiểm tra AI.",
+            issues: [],
+          });
+        }
+      } finally {
+        if (!cancelled) setAiChecking(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.parentId, selectedProductIsComponent, selectedProduct?.id]);
+
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (open) {
@@ -228,6 +319,10 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     e.preventDefault();
     if (!formData.serialNumber || !formData.productId || !formData.warehouseId) {
       toast.error("Vui lòng điền đầy đủ Mã SN, Sản phẩm và Kho hàng!");
+      return;
+    }
+    if (formData.parentId && requiredSlotType && !formData.installSlotName) {
+      toast.error(`Vui lòng chọn ${requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"} khi lắp linh kiện vào server.`);
       return;
     }
 
@@ -404,6 +499,8 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                         ...formData,
                         productId: v,
                         parentId: isMain ? "" : formData.parentId,
+                        installSlotType: "",
+                        installSlotName: "",
                         status: isMain && formData.status === "INSTALLED" ? "IN_STOCK" : formData.status,
                       });
                     }}
@@ -513,6 +610,8 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   onValueChange={v => setFormData({
                     ...formData,
                     parentId: v === "none" ? "" : v,
+                    installSlotType: "",
+                    installSlotName: "",
                     status: v && v !== "none" ? "INSTALLED" : formData.status,
                   })}
                 >
@@ -544,6 +643,71 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                     </p>
                   ) : null;
                 })()}
+                {(aiChecking || aiResult) && (
+                  <div className={`rounded-md border px-3 py-2 text-sm ${
+                    aiChecking
+                      ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : aiResult?.aiUnavailable
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : aiResult?.compatible
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-red-200 bg-red-50 text-red-800"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {aiChecking ? <Loader2 className="mt-0.5 h-4 w-4 animate-spin" /> : aiResult?.compatible ? <BrainCircuit className="mt-0.5 h-4 w-4" /> : <AlertTriangle className="mt-0.5 h-4 w-4" />}
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {aiChecking
+                            ? "AI đang kiểm tra tương thích..."
+                            : aiResult?.aiUnavailable
+                              ? "AI chưa phản hồi, dùng rule hệ thống"
+                              : aiResult?.compatible
+                                ? "AI tư vấn: phù hợp với server"
+                                : "AI tư vấn: không phù hợp với server"}
+                          {typeof aiResult?.confidence === "number" ? ` (${Math.round(aiResult.confidence * 100)}%)` : ""}
+                        </p>
+                        {aiResult?.aiMessage && <p className="mt-1 text-xs">{aiResult.aiMessage}</p>}
+                        {aiResult?.issues?.slice(0, 3).map((issue, index) => (
+                          <p key={index} className="mt-1 text-xs">
+                            {issue.source === "SYSTEM" ? "Rule" : "Hermes"}: {issue.message}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {formData.parentId && requiredSlotType && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-indigo-100 bg-indigo-50/60 p-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600">{requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"}</label>
+                      <Select
+                        value={formData.installSlotName}
+                        onValueChange={(slotName) => setFormData({
+                          ...formData,
+                          installSlotType: requiredSlotType,
+                          installSlotName: slotName,
+                        })}
+                      >
+                        <SelectTrigger className="bg-white"><SelectValue placeholder={`Chọn ${requiredSlotType === "DIMM" ? "DIMM" : "Bay"}`} /></SelectTrigger>
+                        <SelectContent className="bg-white">
+                          {slotOptions.map(slotName => {
+                            const used = occupiedSlots.has(`${requiredSlotType}:${slotName}`);
+                            return (
+                              <SelectItem key={slotName} value={slotName} disabled={used}>
+                                {slotName}{used ? " - Đã dùng" : ""}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <p className="text-xs text-indigo-700">
+                        RAM/ổ cứng cần chọn đúng vị trí để hoàn thiện dữ liệu DIMM/Bay.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

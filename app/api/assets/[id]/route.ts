@@ -6,6 +6,8 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 import { checkRackOverlap } from "@/lib/rack-utils";
 import { collectAssetTree, resolveRestoredStatus } from "@/lib/asset-tree";
 import { getProductRackUnitHeight } from "@/lib/product-u-height";
+import { componentSlotType, getSlotNames } from "@/lib/server-slots";
+import { getManualStatusChangeError } from "@/lib/asset-status-rules";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -91,7 +93,7 @@ export async function PATCH(req: Request, props: Props) {
       where: { id: assetId },
       include: {
         rentalContracts: { where: { status: "ACTIVE" }, select: { id: true } },
-        parent: { select: { id: true, status: true } },
+        parent: { select: { id: true, status: true, serialNumber: true } },
         product: { include: { productCategory: true } },
       },
     });
@@ -101,7 +103,7 @@ export async function PATCH(req: Request, props: Props) {
     }
 
     const hasActiveRental = existingAsset.rentalContracts.length > 0;
-    const parentIsRented = existingAsset.parent?.status === "RENTED";
+    const parentIsLocked = Boolean(existingAsset.parent && existingAsset.parent.status !== "IN_STOCK");
     const targetProduct = data.productId && data.productId !== existingAsset.productId
       ? await prisma.product.findUnique({
         where: { id: data.productId },
@@ -135,6 +137,69 @@ export async function PATCH(req: Request, props: Props) {
       );
     }
 
+    let targetParentAsset: any = null;
+    if (targetHasParent && data.parentId !== existingAsset.parentId) {
+      targetParentAsset = await prisma.asset.findUnique({
+        where: { id: data.parentId },
+        include: {
+          product: { include: { productCategory: true } },
+          components: { select: { id: true, installSlotType: true, installSlotName: true } },
+        },
+      });
+      if (!targetParentAsset) {
+        return NextResponse.json({ error: "Không tìm thấy thiết bị cha." }, { status: 404 });
+      }
+      if (targetParentAsset.status !== "IN_STOCK") {
+        return NextResponse.json(
+          { error: "Chỉ được lắp linh kiện vào server đang ở trạng thái Trong kho." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (targetHasParent && data.parentId === existingAsset.parentId) {
+      targetParentAsset = await prisma.asset.findUnique({
+        where: { id: data.parentId },
+        include: {
+          product: { include: { productCategory: true } },
+          components: { select: { id: true, installSlotType: true, installSlotName: true } },
+        },
+      });
+    }
+
+    if ((data.parentId === null || data.parentId === "none") && existingAsset.parentId && existingAsset.parent?.status !== "IN_STOCK") {
+      return NextResponse.json(
+        { error: "Chỉ được tháo linh kiện khi server cha đang ở trạng thái Trong kho. Vui lòng đổi trạng thái server trước." },
+        { status: 400 }
+      );
+    }
+
+    const requiredSlotType = componentSlotType({ product: { category: targetProduct.productCategory?.code, attributes: targetProduct.attributes } });
+    if (targetHasParent && targetParentAsset && requiredSlotType) {
+      const installSlotType = data.installSlotType === "BAY" ? "DRIVE_BAY" : data.installSlotType;
+      const installSlotName = data.installSlotName ? String(data.installSlotName).trim() : "";
+      if (installSlotType !== requiredSlotType || !installSlotName) {
+        return NextResponse.json(
+          { error: `${targetProduct.productCategory?.code === "MEMORY" ? "RAM" : "Ổ cứng"} bắt buộc chọn ${requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"} khi lắp vào server.` },
+          { status: 400 }
+        );
+      }
+
+      const validSlots = getSlotNames(targetParentAsset.product, requiredSlotType);
+      if (!validSlots.includes(installSlotName)) {
+        return NextResponse.json({ error: `${installSlotName} không tồn tại trên server cha.` }, { status: 400 });
+      }
+
+      const slotInUse = targetParentAsset.components.some((component: any) =>
+        component.id !== assetId &&
+        component.installSlotType === requiredSlotType &&
+        component.installSlotName === installSlotName
+      );
+      if (slotInUse) {
+        return NextResponse.json({ error: `${installSlotName} đã được sử dụng trên server cha.` }, { status: 409 });
+      }
+    }
+
     // 1️⃣ FIELD-LEVEL ENTERPRISE PROTECTION
     const forbiddenFields: string[] = [];
 
@@ -155,8 +220,8 @@ export async function PATCH(req: Request, props: Props) {
       if (!forbiddenFields.includes("rackUnit")) forbiddenFields.push("rackUnit");
     }
 
-    // Rule d: Linh kiện thuộc server đang cho thuê → không được đổi trạng thái
-    if (parentIsRented) {
+    // Rule d: Linh kiện thuộc server không ở trong kho → không được đổi trạng thái
+    if (parentIsLocked) {
       if (!forbiddenFields.includes("status")) forbiddenFields.push("status");
     }
 
@@ -193,7 +258,7 @@ export async function PATCH(req: Request, props: Props) {
     if (violatedFields.length > 0) {
       let reason = "Chỉ được phép cập nhật thông tin vận hành (Ghi chú, v.v).";
       if (hasActiveRental) reason = "Thiết bị đang có hợp đồng thuê active. Hãy kết thúc hợp đồng trước.";
-      if (parentIsRented && violatedFields.includes("Trạng thái")) reason = "Linh kiện đang gắn vào thiết bị mẹ đang cho thuê. Không thể thay đổi trạng thái.";
+      if (parentIsLocked && violatedFields.includes("Trạng thái")) reason = "Linh kiện đang gắn vào server không ở trạng thái Trong kho. Không thể thay đổi trạng thái.";
       return NextResponse.json({
         error: `Không thể thay đổi: ${violatedFields.join(", ")}. ${reason}`
       }, { status: 400 });
@@ -246,6 +311,11 @@ export async function PATCH(req: Request, props: Props) {
         });
 
         return NextResponse.json({ message: "Đã khôi phục thiết bị và linh kiện con." });
+      }
+
+      const manualStatusError = getManualStatusChangeError(existingAsset, data.status);
+      if (manualStatusError) {
+        return NextResponse.json({ error: manualStatusError }, { status: 400 });
       }
 
       const allowedTransitions: Record<string, string[]> = {
@@ -374,10 +444,18 @@ export async function PATCH(req: Request, props: Props) {
 
     const attachesToParent = data.parentId && data.parentId !== "none";
     const parentChanged = attachesToParent && data.parentId !== existingAsset.parentId;
-    if (attachesToParent && (parentChanged || updateData.status === "IN_STOCK" || updateData.status === "DEPLOYED")) {
-      updateData.status = "INSTALLED";
+    if (attachesToParent) {
+      if (requiredSlotType) {
+        updateData.installSlotType = requiredSlotType;
+        updateData.installSlotName = String(data.installSlotName).trim();
+      }
+      if (parentChanged || updateData.status === "IN_STOCK" || updateData.status === "DEPLOYED") {
+        updateData.status = "INSTALLED";
+      }
     } else if ((data.parentId === null || data.parentId === "none") && existingAsset.parentId && existingAsset.status === "INSTALLED") {
       updateData.status = "IN_STOCK";
+      updateData.installSlotType = null;
+      updateData.installSlotName = null;
     }
 
     if (data.productId) updateData.product = { connect: { id: data.productId } };

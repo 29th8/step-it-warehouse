@@ -2,13 +2,13 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Filter, Package, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Download, Filter, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AssetTable } from "@/components/inventory/asset-table";
 import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { ImportAssetModal } from "@/components/inventory/import-asset-modal";
@@ -16,11 +16,17 @@ import type { ProductCategoryOption } from "@/components/products/product-catego
 import type { ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
 
 const PAGE_SIZE = 50;
+const SERVER_PRIMARY_FILTER_KEYS = ["uHeight", "dimmSlots", "driveBays"];
+const DEFAULT_PRIMARY_FILTER_LIMIT = 4;
 
 type AssetResponse = {
   data?: any[];
   total?: number;
   totalPages?: number;
+};
+
+type CategoryCountsResponse = {
+  data?: Record<string, number>;
 };
 
 function parseList(json: any) {
@@ -39,11 +45,14 @@ export default function AssetListPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [categorySearch, setCategorySearch] = useState("");
 
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
+  const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
 
   const selectedCategory = useMemo(
     () => categories.find((category) => category.code === activeCategory),
@@ -56,6 +65,33 @@ export default function AssetListPage() {
       .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
     [attributeDefinitions, selectedCategory?.id]
   );
+
+  const primaryDefinitions = useMemo(() => {
+    if (activeCategory === "SERVER") {
+      return selectedDefinitions.filter((definition) => SERVER_PRIMARY_FILTER_KEYS.includes(definition.key));
+    }
+    return selectedDefinitions.slice(0, DEFAULT_PRIMARY_FILTER_LIMIT);
+  }, [activeCategory, selectedDefinitions]);
+
+  const advancedDefinitions = useMemo(() => {
+    const primaryKeys = new Set(primaryDefinitions.map((definition) => definition.key));
+    return selectedDefinitions.filter((definition) => !primaryKeys.has(definition.key));
+  }, [primaryDefinitions, selectedDefinitions]);
+
+  const activeAdvancedFilterCount = useMemo(() => {
+    return advancedDefinitions.filter((definition) => {
+      const value = attributeFilters[definition.key];
+      return value && value !== "none";
+    }).length;
+  }, [advancedDefinitions, attributeFilters]);
+
+  const filteredCategories = useMemo(() => {
+    const keyword = categorySearch.trim().toLowerCase();
+    if (!keyword) return categories;
+    return categories.filter((category) => {
+      return category.name.toLowerCase().includes(keyword) || category.code.toLowerCase().includes(keyword);
+    });
+  }, [categories, categorySearch]);
 
   useEffect(() => {
     const loadMeta = async () => {
@@ -93,7 +129,7 @@ export default function AssetListPage() {
     for (const definition of selectedDefinitions) {
       const value = attributeFilters[definition.key];
       if (!value || value === "none") continue;
-      if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
+      if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN" || definition.inputType === "NUMBER") {
         params.append(`attr_${definition.key}`, value);
       } else {
         params.append(`attrLike_${definition.key}`, value);
@@ -102,6 +138,17 @@ export default function AssetListPage() {
 
     return params;
   }, [activeCategory, searchQuery, ownerFilter, filterStatus, selectedDefinitions, attributeFilters]);
+
+  const buildCategoryCountParams = useCallback(() => {
+    const params = new URLSearchParams();
+    params.append("categoryCounts", "true");
+
+    if (searchQuery) params.append("search", searchQuery);
+    if (ownerFilter) params.append("owner", ownerFilter);
+    if (filterStatus !== "ALL") params.append("status", filterStatus);
+
+    return params;
+  }, [searchQuery, ownerFilter, filterStatus]);
 
   const fetchAssets = useCallback(async (targetPage = page) => {
     if (!activeCategory) {
@@ -132,6 +179,17 @@ export default function AssetListPage() {
     }
   }, [activeCategory, buildParams, page]);
 
+  const fetchCategoryCounts = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/assets?${buildCategoryCountParams().toString()}`);
+      const json: CategoryCountsResponse = await res.json();
+      if (!res.ok) throw new Error((json as any)?.error || "Không thể tải số lượng danh mục");
+      setCategoryCounts(json.data || {});
+    } catch (error) {
+      setCategoryCounts({});
+    }
+  }, [buildCategoryCountParams]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1);
@@ -144,7 +202,17 @@ export default function AssetListPage() {
     fetchAssets(page);
   }, [page]);
 
-  const refreshAll = () => fetchAssets(page);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchCategoryCounts();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [fetchCategoryCounts]);
+
+  const refreshAll = () => {
+    fetchAssets(page);
+    fetchCategoryCounts();
+  };
 
   const handleCategoryChange = (categoryCode: string) => {
     setActiveCategory(categoryCode);
@@ -156,8 +224,30 @@ export default function AssetListPage() {
     setAttributeFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const renderAttributeFilter = (definition: ProductAttributeDefinition) => {
+  const clearAdvancedFilters = () => {
+    setAttributeFilters((prev) => {
+      const next = { ...prev };
+      for (const definition of advancedDefinitions) {
+        delete next[definition.key];
+      }
+      return next;
+    });
+  };
+
+  const clearAllFilters = () => {
+    setFilterStatus("ALL");
+    setOwnerFilter("");
+    setSearchQuery("");
+    setAttributeFilters({});
+    setPage(1);
+  };
+
+  const renderAttributeFilter = (definition: ProductAttributeDefinition, variant: "compact" | "sheet" = "compact") => {
     const value = attributeFilters[definition.key] || "";
+    const wrapperClassName = variant === "sheet" ? "space-y-2" : "";
+    const controlClassName = variant === "sheet"
+      ? "w-full h-10 bg-white border-slate-200"
+      : "w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0";
 
     if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
       const options = definition.inputType === "BOOLEAN"
@@ -168,31 +258,38 @@ export default function AssetListPage() {
         : definition.options.filter((option) => option.isActive !== false);
 
       return (
-        <Select key={definition.id} value={value || "none"} onValueChange={(next) => setAttributeFilter(definition.key, next)}>
-          <SelectTrigger className="w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0">
-            <SelectValue placeholder={definition.label} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">-- {definition.label} --</SelectItem>
-            {options.map((option) => (
-              <SelectItem key={option.id} value={option.value}>
-                {option.label || option.value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div key={definition.id} className={wrapperClassName}>
+          {variant === "sheet" && <label className="text-sm font-medium text-slate-700">{definition.label}</label>}
+          <Select value={value || "none"} onValueChange={(next) => setAttributeFilter(definition.key, next)}>
+            <SelectTrigger className={controlClassName}>
+              <SelectValue placeholder={definition.label} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">-- {definition.label} --</SelectItem>
+              {options.map((option) => (
+                <SelectItem key={option.id} value={option.value}>
+                  {option.label || option.value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       );
     }
 
     return (
-      <Input
-        key={definition.id}
-        placeholder={definition.label}
-        value={value}
-        type={definition.inputType === "NUMBER" ? "number" : "text"}
-        onChange={(event) => setAttributeFilter(definition.key, event.target.value)}
-        className="w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0 text-sm"
-      />
+      <div key={definition.id} className={wrapperClassName}>
+        {variant === "sheet" && <label className="text-sm font-medium text-slate-700">{definition.label}</label>}
+        <Input
+          placeholder={definition.label}
+          value={value}
+          type={definition.inputType === "NUMBER" ? "number" : "text"}
+          min={definition.inputType === "NUMBER" ? 1 : undefined}
+          step={definition.inputType === "NUMBER" ? 1 : undefined}
+          onChange={(event) => setAttributeFilter(definition.key, event.target.value)}
+          className={`${controlClassName} text-sm`}
+        />
+      </div>
     );
   };
 
@@ -282,16 +379,66 @@ export default function AssetListPage() {
             </div>
           </div>
 
-          <div className="flex bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3 overflow-x-auto">
+          <div className="flex flex-wrap items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-700 shrink-0 border-r border-slate-200 pr-3">
               <Filter className="w-4 h-4 text-blue-600" />
               Lọc {selectedCategory?.name || "danh mục"}
             </div>
 
-            {selectedDefinitions.length > 0 ? (
-              selectedDefinitions.map(renderAttributeFilter)
+            {primaryDefinitions.length > 0 ? (
+              primaryDefinitions.map((definition) => renderAttributeFilter(definition))
             ) : (
               <span className="text-sm text-slate-400 italic py-2 shrink-0">Danh mục này chưa có thuộc tính lọc.</span>
+            )}
+
+            {advancedDefinitions.length > 0 && (
+              <Sheet open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                  >
+                    <SlidersHorizontal className="w-4 h-4 mr-2 text-blue-600" />
+                    Bộ lọc nâng cao
+                    {activeAdvancedFilterCount > 0 && (
+                      <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">
+                        {activeAdvancedFilterCount}
+                      </span>
+                    )}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="bg-white sm:max-w-[460px] gap-0">
+                  <SheetHeader className="border-b bg-slate-50 pr-10">
+                    <SheetTitle className="flex items-center gap-2 text-slate-900">
+                      <SlidersHorizontal className="w-5 h-5 text-blue-600" />
+                      Bộ lọc nâng cao
+                    </SheetTitle>
+                  </SheetHeader>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {advancedDefinitions.map((definition) => renderAttributeFilter(definition, "sheet"))}
+                  </div>
+                  <SheetFooter className="border-t bg-slate-50 sm:flex-row sm:justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={clearAdvancedFilters}
+                      disabled={activeAdvancedFilterCount === 0}
+                      className="bg-white"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Xóa nâng cao
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setAdvancedFilterOpen(false)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Áp dụng
+                    </Button>
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
             )}
 
             <div className="w-[1px] h-6 bg-slate-200 shrink-0" />
@@ -301,43 +448,101 @@ export default function AssetListPage() {
               onChange={(event) => setOwnerFilter(event.target.value)}
               className="w-[180px] h-9 bg-yellow-50/50 border-yellow-200 text-sm placeholder:text-yellow-600/60 shrink-0"
             />
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={clearAllFilters}
+              className="h-9 px-3 text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0"
+            >
+              <X className="w-4 h-4 mr-1.5" />
+              Xóa lọc
+            </Button>
           </div>
         </div>
       </div>
 
-      <Tabs value={activeCategory} onValueChange={handleCategoryChange} className="w-full">
-        <TabsList className="inline-flex h-auto max-w-full overflow-x-auto p-1 bg-slate-100/80 rounded-lg mb-6 border border-slate-200/60">
-          {categories.map((category) => (
-            <TabsTrigger
-              key={category.id}
-              value={category.code}
-              className="flex items-center gap-2 py-2 px-4 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all font-medium whitespace-nowrap"
-            >
-              <span>{category.name}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {categories.map((category) => (
-          <TabsContent key={category.id} value={category.code} className="focus-visible:outline-none focus-visible:ring-0 mt-0">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <AssetTable data={assets} loading={loading} onRefresh={refreshAll} />
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
-                <p className="text-sm text-slate-500">Trang <strong>{page}</strong> / {totalPages} · Tổng <strong>{total}</strong></p>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1}>«</Button>
-                  <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>‹</Button>
-                  <span className="text-sm font-medium px-2">{page}</span>
-                  <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</Button>
-                  <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</Button>
-                </div>
+      <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
+        <aside className="h-fit overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-slate-900">Danh mục</p>
+                <p className="text-xs text-slate-400">{categories.length} nhóm thiết bị</p>
               </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                {Object.values(categoryCounts).reduce((sum, value) => sum + value, 0)}
+              </span>
+            </div>
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={categorySearch}
+                onChange={(event) => setCategorySearch(event.target.value)}
+                placeholder="Tìm danh mục..."
+                className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-9 text-sm"
+              />
+            </div>
+          </div>
+
+          <nav className="max-h-[520px] overflow-y-auto p-2">
+            {filteredCategories.length === 0 ? (
+              <div className="px-3 py-8 text-center text-sm text-slate-400">Không tìm thấy danh mục.</div>
+            ) : (
+              filteredCategories.map((category) => {
+                const isActive = category.code === activeCategory;
+                const count = categoryCounts[category.code] || 0;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => handleCategoryChange(category.code)}
+                    className={`group flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${isActive
+                      ? "border-blue-200 bg-blue-50 text-blue-700 shadow-sm"
+                      : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50"
+                      }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{category.name}</span>
+                      <span className={`block text-xs ${isActive ? "text-blue-500" : "text-slate-400"}`}>{category.code}</span>
+                    </span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 group-hover:bg-white"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })
             )}
-          </TabsContent>
-        ))}
-      </Tabs>
+          </nav>
+        </aside>
+
+        <section className="min-w-0 space-y-3">
+          <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold text-slate-900">{selectedCategory?.name || "Danh mục"}</p>
+              <p className="text-xs text-slate-400">{selectedCategory?.code || ""}</p>
+            </div>
+            <p className="text-sm text-slate-500">
+              Tổng <strong className="text-blue-600">{total}</strong> thiết bị
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <AssetTable data={assets} loading={loading} onRefresh={refreshAll} />
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
+              <p className="text-sm text-slate-500">Trang <strong>{page}</strong> / {totalPages} · Tổng <strong>{total}</strong></p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page === 1}>«</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>‹</Button>
+                <span className="text-sm font-medium px-2">{page}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>›</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page === totalPages}>»</Button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

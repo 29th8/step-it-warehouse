@@ -34,13 +34,16 @@ export async function POST(req: Request) {
     if (target.parentId !== null) {
       return NextResponse.json({ error: "Thiết bị đích không phải là thiết bị cha" }, { status: 400 });
     }
+    if (target.status !== "IN_STOCK") {
+      return NextResponse.json({ error: "Chỉ được di chuyển linh kiện vào server đang ở trạng thái Trong kho." }, { status: 400 });
+    }
 
     // 2. Lấy tất cả components
     const components = await prisma.asset.findMany({
       where: { id: { in: componentIds } },
       include: {
         product: { select: { name: true } },
-        parent: { select: { serialNumber: true, product: { select: { name: true } } } },
+        parent: { select: { serialNumber: true, status: true, product: { select: { name: true } } } },
       },
     });
 
@@ -51,6 +54,9 @@ export async function POST(req: Request) {
       }
       if (component.parentId === targetAssetId) {
         return NextResponse.json({ error: `Linh kiện ${component.serialNumber} đã thuộc về thiết bị này rồi` }, { status: 400 });
+      }
+      if (component.parent?.status !== "IN_STOCK") {
+        return NextResponse.json({ error: `Chỉ được tháo linh kiện khỏi server đang ở trạng thái Trong kho. Server chứa ${component.serialNumber} chưa ở Trong kho.` }, { status: 400 });
       }
     }
 

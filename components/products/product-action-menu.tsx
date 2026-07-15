@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 import { ProductAttributeFields, validateRequiredAttributes, type ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
+import { ServerSpecAiButton } from "@/components/products/server-spec-ai-button";
 
 interface ProductActionMenuProps {
   product: any;
@@ -329,6 +330,13 @@ export function ProductActionMenu({ product, onRefresh, categories, attributeDef
                   definitions={selectedDefinitions}
                   values={formData.attributes}
                   onChange={(attributes) => setFormData({ ...formData, attributes })}
+                />
+
+                <ServerSpecAiButton
+                  formData={formData}
+                  setFormData={setFormData}
+                  attributeDefinitions={selectedDefinitions}
+                  disabled={isSaving}
                 />
 
                 <div className="space-y-2">

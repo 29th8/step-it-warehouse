@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
 
+function formatSlotType(slotType?: string | null) {
+    if (slotType === "DRIVE_BAY") return "BAY";
+    if (slotType === "DIMM") return "DIMM";
+    return "";
+}
+
 export async function GET(req: Request) {
     try {
         // 1. Fetch data
         const assets = await prisma.asset.findMany({
             where: {
-                status: { not: "DISPOSED" }, // Exclude disposed assets
+                deletedAt: null,
             },
             include: {
                 product: { include: { productCategory: true } },
@@ -26,18 +32,21 @@ export async function GET(req: Request) {
         const sheet = workbook.addWorksheet("Danh_Sach_Kho");
 
         const columnsDef = [
-            { header: "Serial Number", key: "serialNumber", width: 25 },
-            { header: "Mã Sản Phẩm (Model)", key: "productModel", width: 30 },
-            { header: "Tên Thiết Bị", key: "productName", width: 40 },
-            { header: "Phân Loại", key: "productCategory", width: 20 },
-            { header: "Trạng Thái", key: "status", width: 15 },
-            { header: "Kho Hàng", key: "warehouse", width: 25 },
-            { header: "Tủ Rack", key: "rack", width: 20 },
-            { header: "Vị Trí U", key: "rackUnit", width: 10 },
-            { header: "Tên Server Cha", key: "parentSerial", width: 25 },
-            { header: "Ngày Nhập", key: "createdAt", width: 20 },
+            { header: "Số serial", key: "serialNumber", width: 25 },
+            { header: "Mã sản phẩm", key: "productModel", width: 25 },
+            { header: "Tên sản phẩm", key: "productName", width: 40 },
+            { header: "Danh mục", key: "productCategory", width: 22 },
+            { header: "Tên kho", key: "warehouse", width: 25 },
+            { header: "Tên rack", key: "rack", width: 20 },
+            { header: "Vị trí U", key: "rackUnit", width: 12 },
+            { header: "Chiều cao U", key: "uHeight", width: 12 },
+            { header: "Trạng thái", key: "status", width: 18 },
+            { header: "Serial thiết bị cha", key: "parentSerial", width: 25 },
+            { header: "Loại slot", key: "installSlotType", width: 16 },
+            { header: "Tên slot DIMM/Bay", key: "installSlotName", width: 20 },
             { header: "Ghi chú", key: "notes", width: 40 },
-            { header: "Chủ sở hữu (Owner)", key: "owner", width: 25 },
+            { header: "Chủ sở hữu", key: "owner", width: 18 },
+            { header: "Ngày nhập", key: "createdAt", width: 20 },
         ];
 
         sheet.columns = columnsDef;
@@ -57,14 +66,17 @@ export async function GET(req: Request) {
                 productModel: asset.product?.modelNumber || "N/A",
                 productName: asset.product?.name || "N/A",
                 productCategory: asset.product?.productCategory?.name || asset.product?.productCategory?.code || "N/A",
-                status: asset.status,
                 warehouse: asset.warehouse?.name || "N/A",
                 rack: asset.rack?.name || "N/A",
-                rackUnit: asset.rackUnit ? `U${asset.rackUnit}` : "N/A",
+                rackUnit: asset.rackUnit || "",
+                uHeight: asset.uHeight || "",
+                status: asset.status,
                 parentSerial: asset.parent?.serialNumber || "",
-                createdAt: new Date(asset.createdAt).toLocaleDateString("vi-VN"),
+                installSlotType: formatSlotType(asset.installSlotType),
+                installSlotName: asset.installSlotName || "",
                 notes: asset.notes || "",
                 owner: asset.owner || "",
+                createdAt: new Date(asset.createdAt).toLocaleDateString("vi-VN"),
             });
         });
 

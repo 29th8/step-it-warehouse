@@ -5,6 +5,7 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { Prisma } from "@prisma/client";
 import { checkRackOverlap } from "@/lib/rack-utils"; // Đảm bảo bạn đã tạo file này
 import { getProductRackUnitHeight } from "@/lib/product-u-height";
+import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 function serializeAsset(asset: any): any {
   const product = asset.product
@@ -20,6 +21,22 @@ function serializeAsset(asset: any): any {
     product,
     parent: asset.parent ? serializeAsset(asset.parent) : asset.parent,
   };
+}
+
+function buildJsonExactAttributeFilter(key: string, value: string) {
+  const trimmedValue = value.trim();
+  const numericValue = Number(trimmedValue);
+
+  if (trimmedValue !== "" && Number.isFinite(numericValue)) {
+    return {
+      OR: [
+        { attributes: { path: [key], equals: trimmedValue } },
+        { attributes: { path: [key], equals: numericValue } },
+      ],
+    };
+  }
+
+  return { attributes: { path: [key], equals: trimmedValue } };
 }
 
 export async function GET(req: Request) {
@@ -161,7 +178,7 @@ export async function GET(req: Request) {
       if (attrType) whereClause.product.AND.push({ attributes: { path: ["type"], equals: attrType } });
       if (series) whereClause.product.AND.push({ attributes: { path: ["series"], equals: series } });
       for (const filter of exactAttributeFilters) {
-        whereClause.product.AND.push({ attributes: { path: [filter.key], equals: filter.value } });
+        whereClause.product.AND.push(buildJsonExactAttributeFilter(filter.key, filter.value));
       }
       for (const filter of containsAttributeFilters) {
         whereClause.product.AND.push({ attributes: { path: [filter.key], string_contains: filter.value } });
@@ -170,6 +187,27 @@ export async function GET(req: Request) {
       if (whereClause.product.AND.length === 0) {
         delete whereClause.product.AND;
       }
+    }
+
+    if (searchParams.get("categoryCounts") === "true") {
+      const groupedAssets = await prisma.asset.groupBy({
+        by: ["productId"],
+        where: whereClause,
+        _count: { _all: true },
+      });
+      const products = await prisma.product.findMany({
+        where: { id: { in: groupedAssets.map((item) => item.productId) } },
+        include: { productCategory: true },
+      });
+      const categoryByProductId = new Map(products.map((product) => [product.id, product.productCategory?.code || ""]));
+      const counts = groupedAssets.reduce<Record<string, number>>((acc, item) => {
+        const categoryCode = categoryByProductId.get(item.productId);
+        if (!categoryCode) return acc;
+        acc[categoryCode] = (acc[categoryCode] || 0) + item._count._all;
+        return acc;
+      }, {});
+
+      return NextResponse.json({ data: counts });
     }
 
     const page = parseInt(searchParams.get("page") || "1");
@@ -314,12 +352,42 @@ export async function POST(req: Request) {
 
     let parentAsset: any = null;
     if (data.parentId) {
-      parentAsset = await prisma.asset.findUnique({ where: { id: data.parentId } });
+      parentAsset = await prisma.asset.findUnique({
+        where: { id: data.parentId },
+        include: {
+          product: { include: { productCategory: true } },
+          components: { select: { id: true, installSlotType: true, installSlotName: true } },
+        },
+      });
       if (!parentAsset) {
         return NextResponse.json({ error: "Không tìm thấy thiết bị cha." }, { status: 404 });
       }
-      if (parentAsset.status === "RENTED") {
-        return NextResponse.json({ error: "Không thể lắp linh kiện vào thiết bị đang được thuê." }, { status: 400 });
+      if (parentAsset.status !== "IN_STOCK") {
+        return NextResponse.json({ error: "Chỉ được lắp linh kiện vào server đang ở trạng thái Trong kho." }, { status: 400 });
+      }
+
+      const requiredSlotType = componentSlotType({ product: { category: selectedProduct.productCategory?.code, attributes: selectedProduct.attributes } });
+      if (requiredSlotType) {
+        const installSlotType = data.installSlotType === "BAY" ? "DRIVE_BAY" : data.installSlotType;
+        const installSlotName = data.installSlotName ? String(data.installSlotName).trim() : "";
+        if (installSlotType !== requiredSlotType || !installSlotName) {
+          return NextResponse.json(
+            { error: `${selectedProduct.productCategory?.code === "MEMORY" ? "RAM" : "Ổ cứng"} bắt buộc chọn ${requiredSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"} khi lắp vào server.` },
+            { status: 400 }
+          );
+        }
+
+        const validSlots = getSlotNames(parentAsset.product, requiredSlotType);
+        if (!validSlots.includes(installSlotName)) {
+          return NextResponse.json({ error: `${installSlotName} không tồn tại trên server cha.` }, { status: 400 });
+        }
+
+        const slotInUse = parentAsset.components.some((component: any) =>
+          component.installSlotType === requiredSlotType && component.installSlotName === installSlotName
+        );
+        if (slotInUse) {
+          return NextResponse.json({ error: `${installSlotName} đã được sử dụng trên server cha.` }, { status: 409 });
+        }
       }
     }
 
@@ -351,6 +419,11 @@ export async function POST(req: Request) {
 
       if (data.parentId) {
         createData.parent = { connect: { id: data.parentId } };
+        const requiredSlotType = componentSlotType({ product: { category: selectedProduct.productCategory?.code, attributes: selectedProduct.attributes } });
+        if (requiredSlotType) {
+          createData.installSlotType = requiredSlotType;
+          createData.installSlotName = String(data.installSlotName).trim();
+        }
       }
 
       const asset = await tx.asset.create({

@@ -2,9 +2,9 @@
 set -e
 
 echo "========================================="
-echo "  [ENTRYPOINT] Running Prisma DB Push..."
+echo "  [ENTRYPOINT] Running Prisma Migrations..."
 echo "========================================="
-npx prisma db push --accept-data-loss
+npx prisma migrate deploy
 
 echo "========================================="
 echo "  [ENTRYPOINT] Starting Next.js Server..."

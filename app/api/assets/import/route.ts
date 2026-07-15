@@ -4,6 +4,38 @@ import ExcelJS from "exceljs";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getProductRackUnitHeight } from "@/lib/product-u-height";
+import { componentSlotType, getSlotNames, validateComponentCompatibility } from "@/lib/server-slots";
+
+const HEADER_ALIASES: Record<string, string[]> = {
+    serialNumber: ["Số serial", "SerialNumber", "Serial Number", "SN"],
+    productModel: ["Mã sản phẩm", "ProductModel", "Product Model", "Model"],
+    warehouseName: ["Tên kho", "WarehouseName", "Warehouse Name", "Kho"],
+    rackName: ["Tên rack", "RackName", "Rack Name", "Rack"],
+    rackUnit: ["Vị trí U", "RackUnit", "Rack Unit", "U"],
+    uHeight: ["Chiều cao U", "UHeight", "U Height"],
+    status: ["Trạng thái", "Status"],
+    parentSerial: ["Serial thiết bị cha", "ParentSerial", "Parent Serial", "Serial server cha"],
+    installSlotType: ["Loại slot", "SlotType", "InstallSlotType", "Loại DIMM/Bay"],
+    installSlotName: ["Tên slot DIMM/Bay", "SlotName", "InstallSlotName", "DIMM/Bay"],
+    notes: ["Ghi chú", "Notes", "Note"],
+    owner: ["Chủ sở hữu", "Owner"],
+};
+
+function readCell(row: Record<string, any>, field: keyof typeof HEADER_ALIASES) {
+    for (const header of HEADER_ALIASES[field]) {
+        const value = row[header];
+        if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+    }
+    return "";
+}
+
+function normalizeSlotType(value: string) {
+    const normalized = value.trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === "DIMM" || normalized === "RAM") return "DIMM";
+    if (["BAY", "DRIVE_BAY", "DRIVE BAY", "Ổ CỨNG", "O CUNG"].includes(normalized)) return "DRIVE_BAY";
+    return normalized;
+}
 
 export async function POST(req: Request) {
     try {
@@ -69,7 +101,7 @@ export async function POST(req: Request) {
 
         // 5. Build Dictionaries for Validation (Products, Warehouses, Racks)
         const [products, warehouses, racks] = await Promise.all([
-            prisma.product.findMany({ select: { id: true, modelNumber: true, attributes: true, productCategory: { select: { isMain: true } } } }),
+            prisma.product.findMany({ select: { id: true, modelNumber: true, attributes: true, productCategory: { select: { code: true, isMain: true } } } }),
             prisma.warehouse.findMany({ select: { id: true, name: true } }),
             prisma.rack.findMany({ select: { id: true, name: true, warehouseId: true, totalUnits: true } })
         ]);
@@ -79,6 +111,8 @@ export async function POST(req: Request) {
             id: p.id,
             uHeight: getProductRackUnitHeight(p),
             isMain: p.productCategory?.isMain === true,
+            categoryCode: p.productCategory?.code || "",
+            attributes: p.attributes,
         }]));
         const warehouseMap = new Map(warehouses.map(w => [w.name.toLowerCase(), w.id]));
         const rackMap = new Map(racks.map(r => [`${r.name.toLowerCase()}-${r.warehouseId}`, r]));
@@ -88,16 +122,19 @@ export async function POST(req: Request) {
         const validRows: any[] = [];
         const invalidRows: any[] = [];
         const serialsInFile = new Set<string>(); // catch duplicates inside the file
+        const slotsInFile = new Set<string>();
 
         for (const row of rawData) {
-            const serialNumber = row["SerialNumber"];
-            const model = row["ProductModel"];
-            const whName = row["WarehouseName"];
-            const rkName = row["RackName"];
-            const rackUnitStr = row["RackUnit"];
-            const status = row["Status"]?.toUpperCase() || "IN_STOCK";
-            const parentSerial = row["ParentSerial"];
-            const owner = row["Owner"] || null;
+            const serialNumber = readCell(row, "serialNumber");
+            const model = readCell(row, "productModel");
+            const whName = readCell(row, "warehouseName");
+            const rkName = readCell(row, "rackName");
+            const rackUnitStr = readCell(row, "rackUnit");
+            const status = readCell(row, "status").toUpperCase() || "IN_STOCK";
+            const parentSerial = readCell(row, "parentSerial");
+            const installSlotTypeInput = readCell(row, "installSlotType");
+            const installSlotName = readCell(row, "installSlotName");
+            const owner = readCell(row, "owner") || null;
 
             const errors: string[] = [];
 
@@ -122,6 +159,8 @@ export async function POST(req: Request) {
             let productId = null;
             let uHeight = 1;
             let productIsMain = false;
+            let productCategoryCode = "";
+            let productAttributes: any = {};
             if (!model) {
                 errors.push("Missing ProductModel");
             } else {
@@ -129,6 +168,8 @@ export async function POST(req: Request) {
                 productId = product?.id || null;
                 uHeight = product?.uHeight || 1;
                 productIsMain = product?.isMain || false;
+                productCategoryCode = product?.categoryCode || "";
+                productAttributes = product?.attributes || {};
                 if (!productId) errors.push(`ProductModel not found: ${model}`);
             }
 
@@ -172,17 +213,76 @@ export async function POST(req: Request) {
 
             // F. Parent asset validation (Optional)
             let parentId = null;
+            let installSlotType = normalizeSlotType(installSlotTypeInput);
+            let normalizedInstallSlotName = installSlotName || null;
             if (parentSerial) {
                 if (parentSerial === serialNumber) {
                     errors.push(`ParentSerial cannot be self referencing`);
                 } else {
-                    const parentAsset = await prisma.asset.findUnique({ where: { serialNumber: parentSerial } });
+                    const parentAsset = await prisma.asset.findUnique({
+                        where: { serialNumber: parentSerial },
+                        include: { product: { include: { productCategory: true } } },
+                    });
                     if (!parentAsset) {
                         errors.push(`ParentSerial not found in system: ${parentSerial}`);
                     } else {
                         parentId = parentAsset.id;
+                        const requiredSlotType = componentSlotType({
+                            product: {
+                                category: productCategoryCode,
+                                attributes: productAttributes,
+                            },
+                        });
+                        if (requiredSlotType) {
+                            if (!installSlotType || !normalizedInstallSlotName) {
+                                errors.push(`RAM/ổ cứng có Serial thiết bị cha bắt buộc nhập Loại slot và Tên slot DIMM/Bay`);
+                            } else if (installSlotType !== requiredSlotType) {
+                                errors.push(`Loại slot không đúng. ${productCategoryCode} phải dùng ${requiredSlotType === "DIMM" ? "DIMM" : "BAY"}`);
+                            } else {
+                                const validSlots = getSlotNames(parentAsset.product, requiredSlotType);
+                                if (validSlots.length === 0) {
+                                    errors.push(`Server cha chưa khai báo số DIMM/Bay`);
+                                } else if (!validSlots.includes(normalizedInstallSlotName)) {
+                                    errors.push(`Tên slot '${normalizedInstallSlotName}' không tồn tại trên server cha`);
+                                } else {
+                                    const slotKey = `${parentAsset.id}:${installSlotType}:${normalizedInstallSlotName}`;
+                                    if (slotsInFile.has(slotKey)) {
+                                        errors.push(`Slot ${normalizedInstallSlotName} bị trùng trong file import`);
+                                    }
+                                    const occupiedSlot = await prisma.asset.findFirst({
+                                        where: {
+                                            parentId: parentAsset.id,
+                                            installSlotType,
+                                            installSlotName: normalizedInstallSlotName,
+                                        },
+                                        select: { serialNumber: true },
+                                    });
+                                    if (occupiedSlot) {
+                                        errors.push(`Slot ${normalizedInstallSlotName} đã được dùng bởi ${occupiedSlot.serialNumber}`);
+                                    }
+                                    slotsInFile.add(slotKey);
+                                }
+                            }
+
+                            const compatibilityError = validateComponentCompatibility(
+                                {
+                                    category: parentAsset.product.productCategory?.code,
+                                    attributes: parentAsset.product.attributes,
+                                },
+                                {
+                                    category: productCategoryCode,
+                                    attributes: productAttributes,
+                                },
+                            );
+                            if (compatibilityError) errors.push(compatibilityError);
+                        } else {
+                            installSlotType = null;
+                            normalizedInstallSlotName = null;
+                        }
                     }
                 }
+            } else if (installSlotType || normalizedInstallSlotName) {
+                errors.push(`Chỉ nhập Loại slot/Tên slot DIMM/Bay khi có Serial thiết bị cha`);
             }
 
             // Outcome
@@ -203,8 +303,10 @@ export async function POST(req: Request) {
                     uHeight,
                     status,
                     parentId,
+                    installSlotType,
+                    installSlotName: normalizedInstallSlotName,
                     owner,
-                    notes: row["Notes"] || ""
+                    notes: readCell(row, "notes") || ""
                 });
             }
         }
@@ -252,6 +354,10 @@ export async function POST(req: Request) {
                     }
                     if (vh.parentId) {
                         createData.parent = { connect: { id: vh.parentId } };
+                        if (vh.installSlotType && vh.installSlotName) {
+                            createData.installSlotType = vh.installSlotType;
+                            createData.installSlotName = vh.installSlotName;
+                        }
                     }
 
                     return prisma.$transaction(async (tx) => {

@@ -133,6 +133,8 @@ model Asset {
   parentId     String?     // ID của thiết bị cha (ví dụ: Server)
   parent       Asset?      @relation("AssetToComponent", fields: [parentId], references: [id])
   components   Asset[]     @relation("AssetToComponent")
+  installSlotType String?
+  installSlotName String?
   rentalContracts RentalContract[]
   movements    StockMovement[]
   handoverItems HandoverItem[]

@@ -51,14 +51,22 @@ export async function PATCH(req: Request, props: Props) {
         });
       } else {
         await tx.productAttributeDefinition.updateMany({
-          where: { categoryId: id, key: "uHeight" },
+          where: { categoryId: id, key: { in: ["uHeight", "dimmSlots", "driveBays", "ramGeneration", "ramType", "driveFormFactor", "driveInterface"] } },
           data: { isActive: false },
         });
         await tx.$executeRaw`
           UPDATE "Product"
-          SET "attributes" = "attributes" - 'uHeight'
+          SET "attributes" = "attributes" - 'uHeight' - 'dimmSlots' - 'driveBays' - 'ramGeneration' - 'ramType' - 'driveFormFactor' - 'driveInterface'
           WHERE "categoryId" = ${id}
-            AND "attributes" ? 'uHeight'
+            AND (
+              "attributes" ? 'uHeight'
+              OR "attributes" ? 'dimmSlots'
+              OR "attributes" ? 'driveBays'
+              OR "attributes" ? 'ramGeneration'
+              OR "attributes" ? 'ramType'
+              OR "attributes" ? 'driveFormFactor'
+              OR "attributes" ? 'driveInterface'
+            )
         `;
         await tx.$executeRaw`
           UPDATE "Asset"

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 import { ProductAttributeFields, validateRequiredAttributes, type ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
+import { ServerSpecAiButton } from "@/components/products/server-spec-ai-button";
 
 interface CreateProductProps {
   onRefresh: () => void;
@@ -175,7 +176,12 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
               onChange={(attributes) => setFormData({ ...formData, attributes })}
             />
 
-
+            <ServerSpecAiButton
+              formData={formData}
+              setFormData={setFormData}
+              attributeDefinitions={selectedDefinitions}
+              disabled={isSaving}
+            />
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Mô tả cấu hình (Tùy chọn)</label>

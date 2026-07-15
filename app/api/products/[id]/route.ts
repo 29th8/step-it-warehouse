@@ -42,20 +42,33 @@ async function validateRequiredAttributes(categoryId: string, attributes: Record
 }
 
 function validateRackUnitHeight(attributes: Record<string, any> | null | undefined) {
-  const rawValue = attributes?.uHeight;
-  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") return null;
+  const positiveIntegerAttributes: Record<string, string> = {
+    uHeight: "Chiều cao rack (U)",
+    dimmSlots: "Số khe RAM (DIMM)",
+    driveBays: "Số bay ổ cứng",
+  };
 
-  const parsed = Number(rawValue);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    return "Chiều cao rack (U) phải là số nguyên lớn hơn hoặc bằng 1.";
+  for (const [key, label] of Object.entries(positiveIntegerAttributes)) {
+    const rawValue = attributes?.[key];
+    if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") continue;
+
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return `${label} phải là số nguyên lớn hơn hoặc bằng 1.`;
+    }
   }
 
   return null;
 }
 
-function sanitizeAttributesForCategory(isMain: boolean, attributes: Record<string, any> | null | undefined) {
+function sanitizeAttributesForCategory(categoryCode: string, isMain: boolean, attributes: Record<string, any> | null | undefined) {
   const sanitized = { ...(attributes || {}) };
   if (!isMain) delete sanitized.uHeight;
+  if (categoryCode !== "SERVER") {
+    for (const key of ["dimmSlots", "driveBays", "ramGeneration", "ramType", "driveFormFactor", "driveInterface"]) {
+      delete sanitized[key];
+    }
+  }
   return sanitized;
 }
 
@@ -85,7 +98,7 @@ export async function PATCH(req: Request, props: Props) {
       return NextResponse.json({ error: "Danh mục sản phẩm không tồn tại" }, { status: 400 });
     }
 
-    const attributes = sanitizeAttributesForCategory(category.isMain, data.attributes || {});
+    const attributes = sanitizeAttributesForCategory(category.code, category.isMain, data.attributes || {});
     const missingAttributes = await validateRequiredAttributes(category.id, attributes);
     if (missingAttributes.length > 0) {
       return NextResponse.json({ error: `Vui lòng nhập: ${missingAttributes.join(", ")}` }, { status: 400 });

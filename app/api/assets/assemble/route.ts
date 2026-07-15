@@ -35,9 +35,9 @@ export async function POST(req: Request) {
     if (!parentAssetObj) {
       return NextResponse.json({ error: "Không tìm thấy thiết bị mẹ." }, { status: 404 });
     }
-    if (parentAssetObj.status === "RENTED") {
+    if (parentAssetObj.status !== "IN_STOCK") {
       return NextResponse.json(
-        { error: "Không thể lắp ráp linh kiện vào thiết bị đang được thuê." },
+        { error: "Chỉ được lắp ráp khi server đang ở trạng thái Trong kho. Vui lòng đổi trạng thái server trước." },
         { status: 400 }
       );
     }

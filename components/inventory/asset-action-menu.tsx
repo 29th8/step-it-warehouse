@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   MoreHorizontal, Trash, Eye, Loader2,
-  Box, Tag, Activity, Calendar, FileText, Settings, X, Save, Edit3, Layers, MapPin, Clock, CalendarClock, PackageCheck, MonitorSpeaker, Cpu
+  AlertTriangle, Box, BrainCircuit, Tag, Activity, Calendar, FileText, Settings, X, Save, Edit3, Layers, MapPin, Clock, CalendarClock, PackageCheck, MonitorSpeaker, Cpu
 } from "lucide-react";
 
 import { handleApiResponse } from "@/lib/api-handler";
@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AssemblyConfigDialog } from "@/components/inventory/assembly-config-dialog";
+import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 // ==========================================
 // 1. INTERFACES
@@ -28,7 +29,8 @@ interface Product {
   id: string;
   name: string;
   category?: string;
-  productCategory?: { isMain?: boolean };
+  attributes?: Record<string, unknown> | null;
+  productCategory?: { isMain?: boolean; code?: string };
 }
 interface Warehouse { id: string; name: string; }
 interface StockMovement {
@@ -48,6 +50,8 @@ interface AssetDetail {
   rackUnit?: number | null;
   uHeight?: number;
   parentId?: string | null;
+  installSlotType?: string | null;
+  installSlotName?: string | null;
   product?: Product;
   warehouse?: Warehouse;
   rack?: Rack;
@@ -77,7 +81,17 @@ interface FormDataState {
   rackUnit: string;
   uHeight: string;
   parentId: string; // "none" = không có cha
+  installSlotType: string;
+  installSlotName: string;
 }
+
+type AiAssemblyResult = {
+  compatible: boolean;
+  confidence?: number;
+  aiUnavailable?: boolean;
+  aiMessage?: string;
+  issues: { severity: "ERROR" | "WARNING"; message: string; source: "SYSTEM" | "HERMES" }[];
+};
 
 export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openToken, onDetailClose }: AssetActionMenuProps) {
   // ================= STATE =================
@@ -95,18 +109,31 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
   const [isSaving, setIsSaving] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
-  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: { name: string } }[]>([]);
+  const [parentsList, setParentsList] = useState<{ id: string; serialNumber: string; product: Product }[]>([]);
   const [parentSearch, setParentSearch] = useState("");
+  const [occupiedSlots, setOccupiedSlots] = useState<Set<string>>(new Set());
+  const [aiChecking, setAiChecking] = useState(false);
+  const [aiResult, setAiResult] = useState<AiAssemblyResult | null>(null);
 
   const [formData, setFormData] = useState<FormDataState>({
     serialNumber: "", status: "", notes: "", owner: "",
     productId: "", warehouseId: "", rackId: "", rackUnit: "", uHeight: "1",
-    parentId: "none",
+    parentId: "none", installSlotType: "", installSlotName: "",
   });
   const selectedEditProduct = productsList.find(p => p.id === formData.productId) || detailData?.product;
   const selectedEditProductIsMain = selectedEditProduct?.productCategory?.isMain === true;
   const selectedEditProductIsComponent = selectedEditProduct?.productCategory?.isMain === false;
+  const requiredEditSlotType = componentSlotType({ product: selectedEditProduct });
+  const selectedEditParent = parentsList.find(p => p.id === formData.parentId) || detailData?.parent;
+  const editSlotOptions = selectedEditParent ? getSlotNames(selectedEditParent.product, requiredEditSlotType) : [];
   const detailProductIsMain = detailData?.product?.productCategory?.isMain === true;
+  const deployedLocationText = detailData
+    ? [
+      detailData.warehouse?.name,
+      detailData.rack?.name,
+      detailData.rackUnit ? `U${detailData.rackUnit}` : null,
+    ].filter(Boolean).join(" / ")
+    : "";
 
   const STATUS_LABELS: Record<string, string> = {
     IN_STOCK: "Trong kho",
@@ -217,6 +244,8 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
         rackUnit: assetData.rackUnit ? assetData.rackUnit.toString() : "",
         uHeight: assetData.uHeight ? assetData.uHeight.toString() : "1",
         parentId: assetData.parentId || "none",
+        installSlotType: assetData.installSlotType || "",
+        installSlotName: assetData.installSlotName || "",
       });
 
     } catch (error) {
@@ -230,6 +259,10 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
 
   const handleSaveEdit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (formData.parentId !== "none" && requiredEditSlotType && !formData.installSlotName) {
+      toast.error(`Vui lòng chọn ${requiredEditSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"} khi lắp linh kiện vào server.`);
+      return;
+    }
     setIsSaving(true);
 
     try {
@@ -240,7 +273,9 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
           ...formData,
           rackId: formData.rackId === "none" || formData.rackId === "" ? null : formData.rackId,
           rackUnit: selectedEditProductIsMain && formData.rackUnit ? parseInt(formData.rackUnit) : null,
-          parentId: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.parentId
+          parentId: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.parentId,
+          installSlotType: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.installSlotType,
+          installSlotName: selectedEditProductIsMain || formData.parentId === "none" ? null : formData.installSlotName,
         }),
       });
 
@@ -276,6 +311,79 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openToken]);
+
+  useEffect(() => {
+    if (!isDetailOpen || formData.parentId === "none" || !requiredEditSlotType) {
+      setOccupiedSlots(new Set());
+      return;
+    }
+
+    const loadOccupiedSlots = async () => {
+      try {
+        const res = await fetch(`/api/assets?parentId=${formData.parentId}`);
+        const json = await res.json();
+        const children = Array.isArray(json) ? json : json.data || [];
+        setOccupiedSlots(new Set(
+          children
+            .filter((item: any) => item.id !== detailData?.id && item.installSlotType && item.installSlotName)
+            .map((item: any) => `${item.installSlotType}:${item.installSlotName}`)
+        ));
+      } catch {
+        setOccupiedSlots(new Set());
+      }
+    };
+
+    loadOccupiedSlots();
+  }, [isDetailOpen, formData.parentId, requiredEditSlotType, detailData?.id]);
+
+  useEffect(() => {
+    if (!isDetailOpen || !isEditMode || formData.parentId === "none" || !selectedEditProductIsComponent || !selectedEditProduct?.id) {
+      setAiResult(null);
+      setAiChecking(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setAiChecking(true);
+      try {
+        const res = await fetch("/api/ai/assembly/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parentId: formData.parentId,
+            componentProductIds: [selectedEditProduct.id],
+          }),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json.error || "Lỗi kiểm tra AI");
+        setAiResult({
+          compatible: json.compatible !== false,
+          confidence: json.confidence,
+          aiUnavailable: json.aiUnavailable,
+          aiMessage: json.aiMessage,
+          issues: Array.isArray(json.issues) ? json.issues : [],
+        });
+      } catch (error: any) {
+        if (!cancelled) {
+          setAiResult({
+            compatible: true,
+            aiUnavailable: true,
+            aiMessage: error.message || "Không thể kiểm tra AI.",
+            issues: [],
+          });
+        }
+      } finally {
+        if (!cancelled) setAiChecking(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isDetailOpen, isEditMode, formData.parentId, selectedEditProductIsComponent, selectedEditProduct?.id]);
 
   return (
     <>
@@ -438,7 +546,10 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                                         <div key={comp.id} className="text-sm bg-white border rounded-md p-2 flex justify-between items-center shadow-sm ml-1">
                                           <div>
                                             <p className="font-bold text-slate-700">{comp.product?.name}</p>
-                                            <p className="text-xs font-mono text-slate-500 mt-0.5">SN: {comp.serialNumber}</p>
+                                            <p className="text-xs font-mono text-slate-500 mt-0.5">
+                                              SN: {comp.serialNumber}
+                                              {comp.installSlotName ? ` · ${comp.installSlotName}` : ""}
+                                            </p>
                                           </div>
                                           <Badge variant="outline" className={`text-[10px] ${getStatusColor(comp.status)} border-transparent py-0`}>
                                             {STATUS_LABELS[comp.status] || comp.status}
@@ -549,20 +660,33 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                       </div>
                     </div>
 
-                    <DialogFooter className="px-6 py-4 border-t bg-white shrink-0">
-                      {detailProductIsMain && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setIsAssemblyOpen(true)}
-                          className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
-                        >
-                          <Layers className="w-4 h-4 mr-2" /> Lắp ráp
+                    <DialogFooter className="px-6 py-4 border-t bg-white shrink-0 sm:justify-between">
+                      <div className="min-w-0">
+                        {detailProductIsMain && detailData.status !== "IN_STOCK" && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            Server đang được triển khai
+                            {deployedLocationText ? <> tại <strong>{deployedLocationText}</strong></> : <> với trạng thái <strong>{STATUS_LABELS[detailData.status] || detailData.status}</strong></>}
+                            , không thể lắp/tháo/cập nhật cấu hình.
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        {detailProductIsMain && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={detailData.status !== "IN_STOCK"}
+                            title={detailData.status !== "IN_STOCK" ? "Chỉ server đang Trong kho mới được lắp ráp" : undefined}
+                            onClick={() => setIsAssemblyOpen(true)}
+                            className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50 disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-white"
+                          >
+                            <Layers className="w-4 h-4 mr-2" /> Lắp ráp
+                          </Button>
+                        )}
+                        <Button onClick={() => setIsEditMode(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
+                          <Edit3 className="w-4 h-4 mr-2" /> Chỉnh sửa thông tin
                         </Button>
-                      )}
-                      <Button onClick={() => setIsEditMode(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
-                        <Edit3 className="w-4 h-4 mr-2" /> Chỉnh sửa thông tin
-                      </Button>
+                      </div>
                     </DialogFooter>
                   </div>
                 ) : (
@@ -589,6 +713,8 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                             ...formData,
                             productId: v,
                             parentId: isMain ? "none" : formData.parentId,
+                            installSlotType: "",
+                            installSlotName: "",
                             status: isMain && formData.status === "INSTALLED" ? "IN_STOCK" : formData.status,
                           });
                         }}
@@ -757,6 +883,8 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                           onValueChange={v => setFormData({
                             ...formData,
                             parentId: v,
+                            installSlotType: "",
+                            installSlotName: "",
                             status: v && v !== "none" ? "INSTALLED" : formData.status,
                           })}
                         >
@@ -784,6 +912,71 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                           <p className="text-xs text-blue-600">
                             ✓ Sẽ lắp vào: {parentsList.find(p => p.id === formData.parentId)?.serialNumber} — {parentsList.find(p => p.id === formData.parentId)?.product?.name}
                           </p>
+                        )}
+                        {(aiChecking || aiResult) && (
+                          <div className={`rounded-md border px-3 py-2 text-sm ${
+                            aiChecking
+                              ? "border-blue-200 bg-blue-50 text-blue-800"
+                              : aiResult?.aiUnavailable
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : aiResult?.compatible
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border-red-200 bg-red-50 text-red-800"
+                          }`}>
+                            <div className="flex items-start gap-2">
+                              {aiChecking ? <Loader2 className="mt-0.5 h-4 w-4 animate-spin" /> : aiResult?.compatible ? <BrainCircuit className="mt-0.5 h-4 w-4" /> : <AlertTriangle className="mt-0.5 h-4 w-4" />}
+                              <div className="min-w-0">
+                                <p className="font-semibold">
+                                  {aiChecking
+                                    ? "AI đang kiểm tra tương thích..."
+                                    : aiResult?.aiUnavailable
+                                      ? "AI chưa phản hồi, dùng rule hệ thống"
+                                      : aiResult?.compatible
+                                        ? "AI tư vấn: phù hợp với server"
+                                        : "AI tư vấn: không phù hợp với server"}
+                                  {typeof aiResult?.confidence === "number" ? ` (${Math.round(aiResult.confidence * 100)}%)` : ""}
+                                </p>
+                                {aiResult?.aiMessage && <p className="mt-1 text-xs">{aiResult.aiMessage}</p>}
+                                {aiResult?.issues?.slice(0, 3).map((issue, index) => (
+                                  <p key={index} className="mt-1 text-xs">
+                                    {issue.source === "SYSTEM" ? "Rule" : "Hermes"}: {issue.message}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {formData.parentId !== "none" && requiredEditSlotType && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-indigo-100 bg-indigo-50/60 p-3">
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-slate-600">{requiredEditSlotType === "DIMM" ? "DIMM slot" : "Bay ổ cứng"}</label>
+                              <Select
+                                value={formData.installSlotName}
+                                onValueChange={(slotName) => setFormData({
+                                  ...formData,
+                                  installSlotType: requiredEditSlotType,
+                                  installSlotName: slotName,
+                                })}
+                              >
+                                <SelectTrigger className="bg-white"><SelectValue placeholder={`Chọn ${requiredEditSlotType === "DIMM" ? "DIMM" : "Bay"}`} /></SelectTrigger>
+                                <SelectContent className="bg-white">
+                                  {editSlotOptions.map(slotName => {
+                                    const used = occupiedSlots.has(`${requiredEditSlotType}:${slotName}`);
+                                    return (
+                                      <SelectItem key={slotName} value={slotName} disabled={used}>
+                                        {slotName}{used ? " - Đã dùng" : ""}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-end">
+                              <p className="text-xs text-indigo-700">
+                                RAM/ổ cứng cần chọn đúng vị trí DIMM/Bay khi gắn vào server.
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -822,10 +1015,12 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
         parentAsset={detailData ? {
           id: detailData.id,
           serialNumber: detailData.serialNumber,
+          status: detailData.status,
           product: {
             id: detailData.product?.id || detailData.productId,
             name: detailData.product?.name || "N/A",
             category: detailData.product?.category,
+            attributes: detailData.product?.attributes,
             productCategory: detailData.product?.productCategory as any,
           },
           warehouse: detailData.warehouse,
