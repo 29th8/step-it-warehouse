@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, BrainCircuit, CheckSquare, Cpu, Filter, Link as LinkIcon, Loader2, Search, Unlink, X } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -126,20 +126,29 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
 
   const currentIds = useMemo(() => currentComponents.map((asset) => asset.id), [currentComponents]);
   const availableIds = useMemo(() => availableComponents.map((asset) => asset.id), [availableComponents]);
-  const attachIds = selectedIds.filter((id) => availableIds.includes(id) && !currentIds.includes(id));
-  const detachIds = currentIds.filter((id) => !selectedIds.includes(id));
+  const attachIds = useMemo(
+    () => selectedIds.filter((id) => availableIds.includes(id) && !currentIds.includes(id)),
+    [availableIds, currentIds, selectedIds]
+  );
+  const detachIds = useMemo(
+    () => currentIds.filter((id) => !selectedIds.includes(id)),
+    [currentIds, selectedIds]
+  );
   const parentIsServer = isServerProduct(parentAsset?.product);
   const parentIsInStock = parentAsset?.status === "IN_STOCK";
   const dimmSlots = useMemo(() => getSlotNames(parentAsset?.product, "DIMM"), [parentAsset?.product]);
   const driveBaySlots = useMemo(() => getSlotNames(parentAsset?.product, "DRIVE_BAY"), [parentAsset?.product]);
-  const currentSlotChanges = currentComponents.filter((asset) => {
-    if (!selectedIds.includes(asset.id)) return false;
-    const requiredSlotType = componentSlotType(asset);
-    if (!requiredSlotType) return false;
-    const assigned = slotAssignments[asset.id];
-    if (!assigned?.slotName) return false;
-    return assigned?.slotType !== asset.installSlotType || assigned?.slotName !== asset.installSlotName;
-  });
+  const currentSlotChanges = useMemo(
+    () => currentComponents.filter((asset) => {
+      if (!selectedIds.includes(asset.id)) return false;
+      const requiredSlotType = componentSlotType(asset);
+      if (!requiredSlotType) return false;
+      const assigned = slotAssignments[asset.id];
+      if (!assigned?.slotName) return false;
+      return assigned?.slotType !== asset.installSlotType || assigned?.slotName !== asset.installSlotName;
+    }),
+    [currentComponents, selectedIds, slotAssignments]
+  );
   const hasChanges = attachIds.length > 0 || detachIds.length > 0 || currentSlotChanges.length > 0;
 
   const selectedComponents = useMemo(() => {
@@ -381,16 +390,13 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
     setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
   };
 
-  const validateWithAi = async () => {
+  const validateWithAi = useCallback(async ({ showToast = true }: { showToast?: boolean } = {}) => {
     if (!parentAsset) return true;
 
     const idsToValidate = Array.from(new Set([
       ...attachIds,
       ...currentSlotChanges.map((asset) => asset.id),
-    ])).filter((id) => {
-      const asset = selectedComponents.find((component) => component.id === id);
-      return Boolean(asset);
-    });
+    ]));
 
     if (idsToValidate.length === 0) {
       setAiResult(null);
@@ -417,17 +423,23 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
       setAiResult(result);
 
       if (result.aiUnavailable && result.issues.length === 0) {
-        toast.warning(result.aiMessage || "AI chưa phản hồi, hệ thống sẽ tiếp tục kiểm tra bằng rule nội bộ.");
+        if (showToast) {
+          toast.warning(result.aiMessage || "AI chưa phản hồi, hệ thống sẽ tiếp tục kiểm tra bằng rule nội bộ.");
+        }
         return true;
       }
 
       if (!result.compatible || result.issues.some((issue) => issue.severity === "ERROR")) {
-        toast.warning("AI cảnh báo linh kiện có thể không phù hợp với server. Hệ thống vẫn cho phép lưu.");
+        if (showToast) {
+          toast.warning("AI cảnh báo linh kiện có thể không phù hợp với server. Hệ thống vẫn cho phép lưu.");
+        }
         return true;
       }
 
       if (result.issues.length > 0) {
-        toast.warning("AI có cảnh báo tương thích, vui lòng kiểm tra lại.");
+        if (showToast) {
+          toast.warning("AI có cảnh báo tương thích, vui lòng kiểm tra lại.");
+        }
       }
 
       return true;
@@ -439,12 +451,36 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
         aiUnavailable: true,
         aiMessage: message,
       });
-      toast.warning(`${message}. Hệ thống sẽ tiếp tục dùng rule nội bộ.`);
+      if (showToast) {
+        toast.warning(`${message}. Hệ thống sẽ tiếp tục dùng rule nội bộ.`);
+      }
       return true;
     } finally {
       setAiChecking(false);
     }
-  };
+  }, [attachIds, currentSlotChanges, parentAsset]);
+
+  useEffect(() => {
+    if (!open || !parentAsset || !parentIsInStock) {
+      setAiResult(null);
+      setAiChecking(false);
+      return;
+    }
+
+    const hasAiValidationTarget = attachIds.length > 0 || currentSlotChanges.length > 0;
+    if (!hasAiValidationTarget) {
+      setAiResult(null);
+      setAiChecking(false);
+      return;
+    }
+
+    setAiChecking(true);
+    const timer = setTimeout(() => {
+      validateWithAi({ showToast: false });
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [attachIds, currentSlotChanges, open, parentAsset, parentIsInStock, validateWithAi]);
 
   const handleSave = async () => {
     if (!parentAsset || !hasChanges) return;
@@ -464,7 +500,7 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
       toast.error("Có DIMM/Bay đang được chọn trùng. Vui lòng kiểm tra lại.");
       return;
     }
-    const aiPassed = await validateWithAi();
+    const aiPassed = await validateWithAi({ showToast: true });
     if (!aiPassed) return;
 
     setSaving(true);
@@ -656,6 +692,70 @@ export function AssemblyConfigDialog({ open, onOpenChange, parentAsset, onSaved 
                 Tháo tất cả
               </Button>
             </div>
+            {(aiChecking || aiResult) && (
+              <div className={`rounded-xl border px-4 py-3 ${
+                aiChecking
+                  ? "border-blue-200 bg-blue-50"
+                  : aiResult?.compatible && !aiResult.aiUnavailable
+                    ? "border-emerald-200 bg-emerald-50"
+                    : aiResult?.aiUnavailable
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-red-200 bg-red-50"
+              }`}>
+                <div className="flex items-start gap-3">
+                  {aiChecking ? (
+                    <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-blue-600" />
+                  ) : aiResult?.compatible && !aiResult.aiUnavailable ? (
+                    <BrainCircuit className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  ) : (
+                    <AlertTriangle className={`mt-0.5 h-5 w-5 shrink-0 ${aiResult?.aiUnavailable ? "text-amber-600" : "text-red-600"}`} />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={`text-sm font-bold ${
+                        aiChecking
+                          ? "text-blue-800"
+                          : aiResult?.compatible && !aiResult.aiUnavailable
+                            ? "text-emerald-800"
+                            : aiResult?.aiUnavailable
+                              ? "text-amber-800"
+                              : "text-red-800"
+                      }`}>
+                        {aiChecking
+                          ? "AI đang kiểm tra tương thích..."
+                          : aiResult?.aiUnavailable
+                            ? "AI chưa sẵn sàng"
+                            : aiResult?.compatible
+                              ? "AI không phát hiện lỗi tương thích"
+                              : "AI cảnh báo linh kiện có thể không phù hợp"}
+                      </p>
+                      {!aiChecking && typeof aiResult?.confidence === "number" && (
+                        <Badge variant="outline" className="bg-white/70">
+                          Tin cậy {Math.round(aiResult.confidence * 100)}%
+                        </Badge>
+                      )}
+                    </div>
+                    {!aiChecking && aiResult?.aiMessage && (
+                      <p className="mt-1 text-xs text-amber-700">{aiResult.aiMessage}</p>
+                    )}
+                    {!aiChecking && aiResult?.issues.length ? (
+                      <div className="mt-2 space-y-1">
+                        {aiResult.issues.map((issue, index) => (
+                          <div key={`${issue.componentId || issue.serialNumber || index}-${index}`} className="flex items-start gap-2 text-xs">
+                            <Badge variant="outline" className={issue.severity === "ERROR" ? "border-red-200 bg-white text-red-700" : "border-amber-200 bg-white text-amber-700"}>
+                              {issue.source === "SYSTEM" ? "Rule" : "Hermes"}
+                            </Badge>
+                            <span className={issue.severity === "ERROR" ? "text-red-700" : "text-amber-700"}>
+                              {issue.serialNumber ? `${issue.serialNumber}: ` : ""}{issue.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
             {orderedSelectedComponents.length === 0 ? (
               <p className="text-sm text-slate-400 italic text-center py-8">Chưa có linh kiện nào.</p>
             ) : (
