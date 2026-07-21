@@ -160,7 +160,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(products.map(serializeProduct));
   } catch (error) {
-    return NextResponse.json({ error: "Lỗi tải danh mục sản phẩm" }, { status: 500 });
+    console.error("GET Products Error:", error);
+    return NextResponse.json({ error: "Lỗi tải danh sách sản phẩm" }, { status: 500 });
   }
 }
 

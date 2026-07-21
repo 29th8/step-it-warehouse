@@ -12,6 +12,24 @@ type AssemblyIssue = {
   source: "SYSTEM" | "HERMES";
 };
 
+type ProductForHermes = {
+  id?: string;
+  name?: string | null;
+  modelNumber?: string | null;
+  vendor?: string | null;
+  productCategory?: {
+    code?: string | null;
+    name?: string | null;
+  } | null;
+  attributes?: unknown;
+};
+
+type AssetForHermes = {
+  id: string;
+  serialNumber?: string | null;
+  product: ProductForHermes;
+};
+
 function readBaseUrl() {
   return process.env.HERMES_API_URL?.replace(/\/+$/, "");
 }
@@ -29,7 +47,80 @@ function readString(value: unknown) {
   return value === undefined || value === null ? "" : String(value).trim();
 }
 
-function serializeAssetForHermes(asset: any) {
+function hasVietnameseText(value: string) {
+  return /[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i.test(value);
+}
+
+function translateComponentTerm(value: string) {
+  return value
+    .replace(/\bGPU module\b/gi, "module GPU")
+    .replace(/\bGPU\b/g, "GPU")
+    .replace(/\bMEMORY\b/g, "RAM")
+    .replace(/\bmemory\b/gi, "RAM")
+    .replace(/\bSTORAGE\b/g, "ổ cứng")
+    .replace(/\bstorage\b/gi, "ổ cứng")
+    .replace(/\bdrive\b/gi, "ổ cứng")
+    .replace(/\bdisk\b/gi, "ổ cứng")
+    .replace(/\bmodule\b/gi, "module")
+    .replace(/\bserver\b/gi, "server")
+    .replace(/\bcomponent\b/gi, "linh kiện")
+    .replace(/\bcomponents\b/gi, "linh kiện")
+    .replace(/\bparent\b/gi, "thiết bị cha")
+    .replace(/\bcategory\b/gi, "danh mục")
+    .replace(/\battributes\b/gi, "thuộc tính")
+    .replace(/\battribute\b/gi, "thuộc tính")
+    .replace(/\binterface\b/gi, "chuẩn giao tiếp")
+    .replace(/\bform factor\b/gi, "kích thước")
+    .replace(/\bslot\b/gi, "khe")
+    .replace(/\bbay\b/gi, "bay")
+    .replace(/\bDIMM\b/g, "DIMM");
+}
+
+function translateHermesMessage(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed || hasVietnameseText(trimmed)) return trimmed;
+
+  const lower = trimmed.toLowerCase();
+  const translatedTerm = translateComponentTerm(trimmed);
+
+  if (lower.includes("does not explicitly declare support")) {
+    const componentMatch = translatedTerm.match(/support for (.+?)(?:;|\.|$)/i);
+    const componentName = componentMatch?.[1]?.trim() || "linh kiện này";
+    return `Server chưa khai báo hỗ trợ ${componentName}; chưa đủ dữ liệu để chứng minh tương thích.`;
+  }
+
+  if (lower.includes("insufficient data") || lower.includes("cannot be proven") || lower.includes("cannot prove")) {
+    return "Chưa đủ dữ liệu thuộc tính để chứng minh linh kiện này tương thích với server.";
+  }
+
+  if (lower.includes("unsupported") || lower.includes("not supported")) {
+    return `Server không hỗ trợ ${translatedTerm}.`;
+  }
+
+  if (lower.includes("not compatible") || lower.includes("incompatible")) {
+    return `${translatedTerm} không tương thích với server này.`;
+  }
+
+  if (lower.includes("unknown component") || lower.includes("unknown category")) {
+    return "Không xác định được danh mục linh kiện, AI không thể xác nhận tương thích.";
+  }
+
+  if (lower.includes("must match") || lower.includes("mismatch")) {
+    return `Thuộc tính của ${translatedTerm} không khớp với cấu hình server.`;
+  }
+
+  if (lower.includes("require explicit") || lower.includes("requires explicit")) {
+    return "Server cần khai báo rõ thuộc tính hỗ trợ linh kiện này trước khi AI có thể xác nhận tương thích.";
+  }
+
+  if (lower.includes("missing")) {
+    return `Thiếu thông tin cần thiết để kiểm tra tương thích: ${translatedTerm}.`;
+  }
+
+  return `Hermes cảnh báo: ${translatedTerm}`;
+}
+
+function serializeAssetForHermes(asset: AssetForHermes) {
   return {
     id: asset.id,
     serialNumber: asset.serialNumber,
@@ -45,7 +136,7 @@ function serializeAssetForHermes(asset: any) {
   };
 }
 
-function serializeProductAsComponent(product: any) {
+function serializeProductAsComponent(product: ProductForHermes & { id: string; name: string }) {
   return {
     id: `product:${product.id}`,
     serialNumber: product.modelNumber || product.name,
@@ -73,7 +164,7 @@ function normalizeHermesIssues(payload: unknown): AssemblyIssue[] {
   return rawIssues
     .map((item): AssemblyIssue | null => {
       if (typeof item === "string") {
-        return { severity: "WARNING", message: item, source: "HERMES" };
+        return { severity: "WARNING", message: translateHermesMessage(item), source: "HERMES" };
       }
       if (!isPlainObject(item)) return null;
       const message = readString(item.message);
@@ -83,7 +174,7 @@ function normalizeHermesIssues(payload: unknown): AssemblyIssue[] {
         componentId: readString(item.componentId) || undefined,
         serialNumber: readString(item.serialNumber) || undefined,
         severity,
-        message,
+        message: translateHermesMessage(message),
         source: "HERMES",
       };
     })
@@ -132,14 +223,14 @@ export async function POST(request: Request) {
     }
 
     const productComponents = componentProducts.map(serializeProductAsComponent);
-    const componentsToValidate: any[] = [...components, ...productComponents];
+    const componentsToValidate: AssetForHermes[] = [...components, ...productComponents];
     if (componentsToValidate.length === 0) {
       return NextResponse.json({ compatible: true, issues: [], skipped: true });
     }
 
     const slotComponents = componentsToValidate.filter((asset) => componentSlotType({
       product: {
-        category: asset.product.productCategory?.code,
+        category: asset.product.productCategory?.code ?? undefined,
         attributes: asset.product.attributes,
       },
     }));
@@ -147,18 +238,18 @@ export async function POST(request: Request) {
     const systemIssues = slotComponents.reduce<AssemblyIssue[]>((acc, component) => {
         const message = validateComponentCompatibility(
           {
-            category: parentAsset.product.productCategory?.code,
+            category: parentAsset.product.productCategory?.code ?? undefined,
             attributes: parentAsset.product.attributes,
           },
           {
-            category: component.product.productCategory?.code,
+            category: component.product.productCategory?.code ?? undefined,
             attributes: component.product.attributes,
           },
         );
         if (!message) return acc;
         acc.push({
           componentId: component.id,
-          serialNumber: component.serialNumber,
+          serialNumber: component.serialNumber ?? undefined,
           severity: "ERROR" as const,
           message,
           source: "SYSTEM" as const,
@@ -198,6 +289,7 @@ export async function POST(request: Request) {
               "For MODULE/PSU/FAN/GPU/NETWORK/ACCESSORY, require explicit parent support attributes such as supportedComponentCategories, supportedModules, moduleType, moduleInterface, psuType, fanType, gpuSupport, or networkModuleSupport.",
               "If compatibility cannot be proven from the provided attributes, return compatible=false with an ERROR issue.",
               "Never silently accept unknown component categories.",
+              "Return all user-facing issue messages in Vietnamese.",
             ],
           },
           server: serializeAssetForHermes(parentAsset),

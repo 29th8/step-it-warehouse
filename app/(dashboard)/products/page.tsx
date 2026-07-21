@@ -53,7 +53,11 @@ export default function ProductListPage() {
   };
 
   useEffect(() => {
-    fetchCategories().catch(() => setCategories([]));
+    fetchCategories().catch((error) => {
+      const message = error instanceof Error ? error.message : "Không thể tải danh mục";
+      setCategories([]);
+      toast.error(message);
+    });
     fetchAttributeDefinitions().catch(() => setAttributeDefinitions([]));
   }, []);
 
@@ -126,7 +130,11 @@ export default function ProductListPage() {
   };
 
   const refreshCategories = () => {
-    fetchCategories().catch(() => setCategories([]));
+    fetchCategories().catch((error) => {
+      const message = error instanceof Error ? error.message : "Không thể tải danh mục";
+      setCategories([]);
+      toast.error(message);
+    });
     fetchAttributeDefinitions().catch(() => setAttributeDefinitions([]));
     refreshList();
   };
