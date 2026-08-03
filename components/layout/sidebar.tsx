@@ -9,18 +9,18 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Server,
   ChevronLeft, ChevronRight, Monitor, History,
-  MapPin, FileText, Users, ClipboardList,
+  MapPin, Users, ClipboardList,
 } from "lucide-react";
 
 export function Sidebar() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as any)?.role === "ADMIN";
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
   const { isCollapsed, toggleSidebar } = useSidebar();
   const pathname = usePathname();
 
   return (
     <aside className={cn(
-      "fixed left-0 top-0 h-screen border-r bg-white transition-all duration-300 z-50 flex flex-col",
+      "fixed left-0 top-0 z-50 hidden h-screen flex-col border-r bg-white transition-all duration-300 md:flex",
       isCollapsed ? "w-20" : "w-64"
     )}>
       {/* Nút Toggle */}

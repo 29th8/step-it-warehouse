@@ -23,7 +23,7 @@ export default function RentalsPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [returnConfirmId, setReturnConfirmId] = useState<string | null>(null);
-  const [printContract, setPrintContract] = useState<any | null>(null);
+  const [printContract, setPrintContract] = useState<RentalContract | null>(null);
 
   // 1. State cho thanh tìm kiếm & filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,7 +52,7 @@ export default function RentalsPage() {
 
       const list = Array.isArray(data) ? data : data.data || [];
       setRentals(list);
-    } catch (error) {
+    } catch {
       toast.error("Không thể tải danh sách hợp đồng.");
     } finally {
       setLoading(false);
@@ -93,7 +93,7 @@ export default function RentalsPage() {
 
       router.refresh();
       fetchRentals();
-    } catch (error) {
+    } catch {
       toast.error("Có lỗi xảy ra khi cập nhật trạng thái.");
     } finally {
       setProcessingId(null);
@@ -144,13 +144,13 @@ export default function RentalsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
 
       {/* Header & Toolbar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-900 tracking-tight">
-            <div className="p-2 bg-slate-100 text-slate-700 rounded-xl border border-slate-200 shadow-sm">
+          <h1 className="text-2xl md:text-3xl font-extrabold flex items-center gap-3 text-slate-900 tracking-tight">
+            <div className="p-2 bg-slate-100 text-slate-700 rounded-lg md:rounded-xl border border-slate-200 shadow-sm">
               <FileText className="w-4 h-4" />
             </div>
             Quản lý Thuê
@@ -163,7 +163,7 @@ export default function RentalsPage() {
         {/* Khu vực công cụ bên phải */}
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             {/* 3. Thanh tìm kiếm UI */}
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -171,13 +171,13 @@ export default function RentalsPage() {
                 placeholder="Tìm khách, SN, tên máy..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-white"
+                className="h-11 pl-9 bg-white md:h-9"
               />
             </div>
 
             {/* Filter Dropdown */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] bg-white">
+              <SelectTrigger className="h-11 w-full bg-white sm:w-[140px] md:h-9">
                 <SelectValue placeholder="Bộ lọc" />
               </SelectTrigger>
               <SelectContent>
@@ -189,10 +189,10 @@ export default function RentalsPage() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline" size="icon" onClick={fetchRentals} disabled={loading}>
+            <Button variant="outline" size="icon" onClick={fetchRentals} disabled={loading} className="h-11 w-full sm:w-11 md:h-9 md:w-9">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
-            <Button onClick={() => router.push("/rentals/create")}>
+            <Button onClick={() => router.push("/rentals/create")} className="h-11 w-full sm:w-auto md:h-9">
               <Plus className="mr-2 h-4 w-4" /> Tạo Hợp Đồng
             </Button>
           </div>
@@ -209,6 +209,53 @@ export default function RentalsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="md:hidden">
+            {loading ? (
+              <div className="flex h-24 items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải dữ liệu...
+              </div>
+            ) : filteredRentals.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                {searchQuery ? "Không tìm thấy kết quả phù hợp." : "Chưa có hợp đồng nào trong hệ thống."}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {filteredRentals.map((contract) => (
+                  <article key={contract.id} className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm font-bold text-blue-600">{contract.asset.serialNumber}</p>
+                        <p className="mt-1 truncate text-sm font-semibold text-slate-900">{contract.asset.product.name}</p>
+                        <p className="truncate text-xs text-slate-500">{contract.customerName}</p>
+                      </div>
+                      {renderStatus(contract)}
+                    </div>
+                    <div className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <p><span className="font-medium text-slate-500">Ngày thuê: </span>{format(new Date(contract.startDate), "dd/MM/yyyy")}</p>
+                      <p><span className="font-medium text-slate-500">Ngày trả dự kiến: </span>{format(new Date(contract.endDate), "dd/MM/yyyy")}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-500">Còn lại:</span>
+                        {renderDaysRemaining(contract) || <span>—</span>}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1 text-slate-600" onClick={() => setPrintContract(contract)}>
+                        <Printer className="h-4 w-4 mr-1" />
+                        In
+                      </Button>
+                      {contract.status === "ACTIVE" && (
+                        <Button variant="destructive" size="sm" className="flex-1" onClick={() => setReturnConfirmId(contract.id)} disabled={!!processingId}>
+                          {processingId === contract.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Thu hồi"}
+                        </Button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -272,6 +319,7 @@ export default function RentalsPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

@@ -7,8 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { MoreHorizontal, Plus, Edit, Trash, Server, Loader2 } from "lucide-react";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Box, Edit, Loader2, MoreHorizontal, Plus, Server, Trash } from "lucide-react";
 import { handleApiResponse } from "@/lib/api-handler";
 import { RackFormDialog } from "./rack-form-dialog";
 
@@ -46,8 +46,9 @@ export function RackTable({ racks, warehouseId, onRefresh }: RackTableProps) {
             });
             await handleApiResponse(res, "Đã xóa tủ rack thành công.");
             onRefresh();
-        } catch (e: any) {
-            toast.error(e.message, { duration: 5000 });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Không thể xóa tủ rack";
+            toast.error(message, { duration: 5000 });
         } finally {
             setIsDeleting(false);
             setIsDeleteAlertOpen(false);
@@ -57,11 +58,63 @@ export function RackTable({ racks, warehouseId, onRefresh }: RackTableProps) {
     return (
         <>
             <div className="flex justify-end mb-4">
-                <Button size="sm" onClick={handleCreate} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+                <Button size="sm" onClick={handleCreate} className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" /> Thêm Tủ Rack
                 </Button>
             </div>
             <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                <div className="md:hidden">
+                    {racks.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-sm italic text-slate-400">
+                            Chưa có tủ rack nào trong kho này.
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-slate-100">
+                            {racks.map((rack) => (
+                                <article key={rack.id} className="space-y-3 p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <Link href={`/racks/${rack.id}`} className="block truncate text-sm font-bold text-blue-600 hover:underline">
+                                                {rack.name}
+                                            </Link>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                {rack.totalUnits ? `${rack.totalUnits}U` : "Không dùng vị trí U"}
+                                            </p>
+                                        </div>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 hover:bg-slate-100">
+                                                    <MoreHorizontal size={16} />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="bg-white z-50 shadow-md border-slate-200">
+                                                <DropdownMenuItem onClick={() => handleEdit(rack)} className="cursor-pointer gap-2">
+                                                    <Edit className="h-4 w-4 text-green-600" /> Sửa
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => { setDeletingRack(rack); setIsDeleteAlertOpen(true); }} className="cursor-pointer gap-2 text-red-600 focus:text-red-700 focus:bg-red-50">
+                                                    <Trash className="h-4 w-4" /> Xóa
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline" className={rack.type === "STORAGE" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200"}>
+                                            {rack.type === "STORAGE" ? <Box className="h-3 w-3" /> : <Server className="h-3 w-3" />}
+                                            {rack.type === "STORAGE" ? "Lưu trữ" : "Datacenter"}
+                                        </Badge>
+                                        <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                                            <Server className="mr-1 h-3 w-3 text-slate-500" />
+                                            {rack._count.assets} thiết bị
+                                        </Badge>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden md:block">
                 <Table>
                     <TableHeader className="bg-slate-50/70">
                         <TableRow>
@@ -116,6 +169,7 @@ export function RackTable({ racks, warehouseId, onRefresh }: RackTableProps) {
                         )}
                     </TableBody>
                 </Table>
+                </div>
             </div>
 
             <RackFormDialog

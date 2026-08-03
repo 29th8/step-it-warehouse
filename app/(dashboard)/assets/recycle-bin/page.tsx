@@ -30,12 +30,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useSession } from "next-auth/react";
 
+type DeletedAsset = {
+    id: string;
+    serialNumber: string;
+    deletedAt?: string | Date | null;
+    product?: { name?: string | null } | null;
+};
+
 export default function RecycleBinPage() {
     const { data: session } = useSession();
     const isAdmin = session?.user?.role === "ADMIN";
     const router = useRouter();
 
-    const [deletedAssets, setDeletedAssets] = useState<any[]>([]);
+    const [deletedAssets, setDeletedAssets] = useState<DeletedAsset[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [processingId, setProcessingId] = useState<string | null>(null);
@@ -46,7 +53,7 @@ export default function RecycleBinPage() {
             const res = await fetch("/api/assets/recycle-bin");
             const data = await res.json();
             setDeletedAssets(Array.isArray(data) ? data : data.data || []);
-        } catch (error) {
+        } catch {
             toast.error("Lỗi khi tải dữ liệu thùng rác.");
         } finally {
             setLoading(false);
@@ -67,8 +74,9 @@ export default function RecycleBinPage() {
             if (!res.ok) throw new Error(data.error || "Lỗi khôi phục");
             toast.success(data.message || "Khôi phục thành công");
             fetchDeletedAssets();
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Lỗi khôi phục";
+            toast.error(message);
         } finally {
             setProcessingId(null);
         }
@@ -82,8 +90,9 @@ export default function RecycleBinPage() {
             if (!res.ok) throw new Error(data.error || "Lỗi xóa vĩnh viễn");
             toast.success(data.message || "Xóa vĩnh viễn thành công");
             fetchDeletedAssets();
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Lỗi xóa vĩnh viễn";
+            toast.error(message);
         } finally {
             setProcessingId(null);
         }
@@ -98,11 +107,11 @@ export default function RecycleBinPage() {
     });
 
     return (
-        <div className="p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto">
-            <div className="flex flex-col gap-6 mb-8">
+        <div className="p-3 sm:p-4 md:p-8 space-y-4 md:space-y-6 max-w-[1600px] mx-auto">
+            <div className="flex flex-col gap-4 md:gap-6 md:mb-8">
                 <div className="flex flex-col gap-1.5">
 
-                    <h1 className="text-3xl font-extrabold flex items-center gap-3 text-red-600 tracking-tight">
+                    <h1 className="text-2xl md:text-3xl font-extrabold flex items-center gap-3 text-red-600 tracking-tight">
                         <Button
                             variant="outline"
                             size="icon"
@@ -145,6 +154,72 @@ export default function RecycleBinPage() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="md:hidden">
+                    {loading ? (
+                        <div className="px-4 py-10 text-center text-sm text-slate-500">
+                            <Spinner size="h-5 w-5 inline mr-2" /> Đang tải thùng rác...
+                        </div>
+                    ) : filteredAssets.length === 0 ? (
+                        <div className="px-4 py-10 text-center text-sm text-slate-500">
+                            {searchQuery ? "Không tìm thấy kết quả" : "Thùng rác trống"}
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-slate-100">
+                            {filteredAssets.map((asset) => (
+                                <article key={asset.id} className="space-y-3 p-4">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-mono text-sm font-bold text-slate-900">{asset.serialNumber}</p>
+                                        <p className="mt-1 truncate text-sm text-slate-600">{asset.product?.name || "Chưa có sản phẩm"}</p>
+                                        <p className="mt-1 text-xs text-slate-400">
+                                            Xóa lúc: {asset.deletedAt ? format(new Date(asset.deletedAt), "dd/MM/yyyy HH:mm") : "-"}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleRestore(asset.id, asset.serialNumber)}
+                                            disabled={!!processingId}
+                                            className="flex-1 text-green-600 border-green-200 hover:bg-green-50"
+                                        >
+                                            {processingId === asset.id ? <Spinner size="h-4 w-4 mr-1" color="text-green-600" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+                                            Khôi phục
+                                        </Button>
+                                        {isAdmin && (
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="sm" disabled={!!processingId} className="flex-1">
+                                                        <Trash2 className="w-4 h-4 mr-1" />
+                                                        Xóa hẳn
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent className="max-w-md bg-white">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                            <AlertTriangle className="w-5 h-5" />
+                                                            Xóa vĩnh viễn thiết bị?
+                                                        </AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-base text-slate-600 mt-2">
+                                                            Bạn có chắc chắn muốn xóa vĩnh viễn thiết bị <strong className="text-slate-900">{asset.serialNumber}</strong>?
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter className="mt-6">
+                                                        <AlertDialogCancel className="border-slate-200">Hủy</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handlePermanentDelete(asset.id)} className="bg-red-600 hover:bg-red-700 text-white">
+                                                            Xác nhận xóa
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden md:block">
                 <Table>
                     <TableHeader className="bg-slate-50">
                         <TableRow>
@@ -236,6 +311,7 @@ export default function RecycleBinPage() {
                         )}
                     </TableBody>
                 </Table>
+                </div>
             </div>
         </div>
     );

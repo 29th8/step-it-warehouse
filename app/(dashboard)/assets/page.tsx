@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { AssetTable } from "@/components/inventory/asset-table";
+import { AssetTable, type AssetTableRow } from "@/components/inventory/asset-table";
 import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { ImportAssetModal } from "@/components/inventory/import-asset-modal";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
@@ -20,17 +20,29 @@ const SERVER_PRIMARY_FILTER_KEYS = ["uHeight", "dimmSlots", "driveBays"];
 const DEFAULT_PRIMARY_FILTER_LIMIT = 4;
 
 type AssetResponse = {
-  data?: any[];
+  data?: AssetTableRow[];
   total?: number;
   totalPages?: number;
+  error?: string;
 };
 
 type CategoryCountsResponse = {
   data?: Record<string, number>;
 };
 
-function parseList(json: any) {
-  return Array.isArray(json) ? json : json?.data || [];
+function parseList<T>(json: unknown): T[] {
+  if (Array.isArray(json)) return json as T[];
+  if (json && typeof json === "object" && "data" in json && Array.isArray((json as { data?: unknown }).data)) {
+    return (json as { data: T[] }).data;
+  }
+  return [];
+}
+
+function getApiError(json: unknown, fallback: string) {
+  if (json && typeof json === "object" && "error" in json && typeof (json as { error?: unknown }).error === "string") {
+    return (json as { error: string }).error;
+  }
+  return fallback;
 }
 
 export default function AssetListPage() {
@@ -40,7 +52,7 @@ export default function AssetListPage() {
   const [attributeDefinitions, setAttributeDefinitions] = useState<ProductAttributeDefinition[]>([]);
   const [activeCategory, setActiveCategory] = useState("");
 
-  const [assets, setAssets] = useState<any[]>([]);
+  const [assets, setAssets] = useState<AssetTableRow[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
@@ -53,6 +65,7 @@ export default function AssetListPage() {
   const [ownerFilter, setOwnerFilter] = useState("");
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
   const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   const selectedCategory = useMemo(
     () => categories.find((category) => category.code === activeCategory),
@@ -102,11 +115,11 @@ export default function AssetListPage() {
         ]);
         const categoriesJson = await categoriesRes.json().catch(() => null);
         const definitionsJson = await definitionsRes.json().catch(() => null);
-        const nextCategories = parseList(categoriesJson);
+        const nextCategories = parseList<ProductCategoryOption>(categoriesJson);
         setCategories(nextCategories);
-        setAttributeDefinitions(parseList(definitionsJson));
+        setAttributeDefinitions(parseList<ProductAttributeDefinition>(definitionsJson));
         setActiveCategory((current) => current || nextCategories[0]?.code || "");
-      } catch (error) {
+      } catch {
         toast.error("Không thể tải danh mục thiết bị");
         setCategories([]);
         setAttributeDefinitions([]);
@@ -162,8 +175,8 @@ export default function AssetListPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/assets?${buildParams(targetPage).toString()}`);
-      const json: AssetResponse | any[] = await res.json();
-      if (!res.ok) throw new Error((json as any)?.error || "Không thể tải thiết bị");
+      const json: AssetResponse | AssetTableRow[] = await res.json();
+      if (!res.ok) throw new Error(getApiError(json, "Không thể tải thiết bị"));
 
       const isArray = Array.isArray(json);
       setAssets(isArray ? json : json.data || []);
@@ -183,9 +196,9 @@ export default function AssetListPage() {
     try {
       const res = await fetch(`/api/assets?${buildCategoryCountParams().toString()}`);
       const json: CategoryCountsResponse = await res.json();
-      if (!res.ok) throw new Error((json as any)?.error || "Không thể tải số lượng danh mục");
+      if (!res.ok) throw new Error(getApiError(json, "Không thể tải số lượng danh mục"));
       setCategoryCounts(json.data || {});
-    } catch (error) {
+    } catch {
       setCategoryCounts({});
     }
   }, [buildCategoryCountParams]);
@@ -196,11 +209,11 @@ export default function AssetListPage() {
       fetchAssets(1);
     }, 350);
     return () => clearTimeout(timer);
-  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions]);
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions, fetchAssets]);
 
   useEffect(() => {
     fetchAssets(page);
-  }, [page]);
+  }, [page, fetchAssets]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -294,11 +307,11 @@ export default function AssetListPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
-      <div className="flex flex-col gap-6 mb-8">
+    <div className="p-3 sm:p-4 md:p-8 space-y-4 md:space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
+      <div className="flex flex-col gap-4 md:gap-6 md:mb-8">
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-900 tracking-tight">
-            <div className="p-2 bg-blue-100/50 text-blue-600 rounded-xl border border-blue-200/50 shadow-sm">
+          <h1 className="text-2xl md:text-3xl font-extrabold flex items-center gap-3 text-slate-900 tracking-tight">
+            <div className="p-2 bg-blue-100/50 text-blue-600 rounded-lg md:rounded-xl border border-blue-200/50 shadow-sm">
               <Package className="w-6 h-6" />
             </div>
             Quản lý Thiết bị
@@ -319,7 +332,125 @@ export default function AssetListPage() {
             />
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
+          <div className="flex items-center gap-2 md:hidden">
+            <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="h-11 flex-1 justify-center rounded-xl bg-white shadow-sm">
+                  <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                  Bộ lọc
+                  {(filterStatus !== "ALL" || ownerFilter || Object.values(attributeFilters).some(Boolean)) && (
+                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">Đang lọc</span>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="max-h-[88vh] rounded-t-2xl bg-white p-0">
+                <SheetHeader className="border-b bg-slate-50 pr-10">
+                  <SheetTitle className="flex items-center gap-2 text-slate-900">
+                    <SlidersHorizontal className="h-5 w-5 text-blue-600" />
+                    Bộ lọc thiết bị
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="max-h-[calc(88vh-132px)] overflow-y-auto p-4 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Danh mục</label>
+                    <Select value={activeCategory} onValueChange={handleCategoryChange}>
+                      <SelectTrigger className="h-11 w-full bg-white">
+                        <SelectValue placeholder="Chọn danh mục" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.code}>
+                            {category.name} ({categoryCounts[category.code] || 0})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Trạng thái</label>
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger className="h-11 w-full bg-white">
+                        <SelectValue placeholder="Trạng thái" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+                        <SelectItem value="WAREHOUSE_STOCK">Trong kho vật lý</SelectItem>
+                        <SelectItem value="AVAILABLE_STOCK">Rời / khả dụng</SelectItem>
+                        <SelectItem value="INSTALLED">Đã lắp trong server</SelectItem>
+                        <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
+                        <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
+                        <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
+                        <SelectItem value="RENTED">Đang thuê</SelectItem>
+                        <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>
+                        <SelectItem value="DISPOSED">Thanh lý</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Chủ sở hữu</label>
+                    <Input
+                      value={ownerFilter}
+                      onChange={(event) => setOwnerFilter(event.target.value)}
+                      placeholder="Lọc theo chủ sở hữu..."
+                      className="h-11 bg-white"
+                    />
+                  </div>
+
+                  {selectedDefinitions.length > 0 && (
+                    <div className="space-y-3 border-t border-slate-100 pt-4">
+                      <p className="text-sm font-bold text-slate-900">Thuộc tính {selectedCategory?.name}</p>
+                      {selectedDefinitions.map((definition) => renderAttributeFilter(definition, "sheet"))}
+                    </div>
+                  )}
+                </div>
+                <SheetFooter className="border-t bg-slate-50 pb-[max(env(safe-area-inset-bottom),1rem)]">
+                  <Button type="button" variant="outline" onClick={clearAllFilters} className="bg-white">
+                    <X className="h-4 w-4" />
+                    Xóa lọc
+                  </Button>
+                  <Button type="button" onClick={() => setMobileFilterOpen(false)} className="bg-blue-600 text-white hover:bg-blue-700">
+                    Áp dụng
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={refreshAll}
+              disabled={loading}
+              className="h-11 w-11 shrink-0 rounded-xl bg-white shadow-sm"
+            >
+              <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => router.push("/assets/recycle-bin")}
+              className="h-11 w-11 shrink-0 rounded-xl bg-white shadow-sm"
+            >
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1 md:hidden">
+            <ImportAssetModal onRefresh={refreshAll} />
+            <Button
+              variant="outline"
+              className="h-10 shrink-0 bg-white shadow-sm"
+              onClick={() => window.open("/api/assets/export/report", "_blank")}
+            >
+              <Download className="w-4 h-4 text-green-600" />
+              Export
+            </Button>
+            <CreateAssetModal onRefresh={refreshAll} />
+          </div>
+
+          <div className="hidden md:flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="h-11 w-full sm:w-[200px] bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-medium">
@@ -379,7 +510,7 @@ export default function AssetListPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3">
+          <div className="hidden md:flex flex-wrap items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm gap-3">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-700 shrink-0 border-r border-slate-200 pr-3">
               <Filter className="w-4 h-4 text-blue-600" />
               Lọc {selectedCategory?.name || "danh mục"}
@@ -462,7 +593,7 @@ export default function AssetListPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
-        <aside className="h-fit overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <aside className="hidden h-fit overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
           <div className="border-b border-slate-100 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>

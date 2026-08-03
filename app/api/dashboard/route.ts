@@ -4,7 +4,15 @@ import { subDays, startOfDay, format } from "date-fns";
 
 export async function GET() {
   try {
-    const [warehouseStockCount, inStockLooseCount, installedCount, installedInWarehouseCount, deployedCount, maintenanceCount, faultyCount, disposedCount, rentedCount, alerts, categoryStats] = await Promise.all([
+    const [
+      activeTotalCount,
+      warehouseStockCount,
+      statusGroups,
+      installedInWarehouseCount,
+      alerts,
+      categoryGroups,
+    ] = await Promise.all([
+      prisma.asset.count({ where: { deletedAt: null } }),
       prisma.asset.count({
         where: {
           deletedAt: null,
@@ -15,24 +23,51 @@ export async function GET() {
           ],
         }
       }),
-      prisma.asset.count({ where: { status: "IN_STOCK", parentId: null, deletedAt: null } }),
-      prisma.asset.count({ where: { status: "INSTALLED", deletedAt: null } }),
+      prisma.asset.groupBy({
+        by: ["status"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
       prisma.asset.count({ where: { status: "INSTALLED", parent: { status: "IN_STOCK" }, deletedAt: null } }),
-      prisma.asset.count({ where: { status: "DEPLOYED", deletedAt: null } }),
-      prisma.asset.count({ where: { status: "MAINTENANCE", deletedAt: null } }),
-      prisma.asset.count({ where: { status: "FAULTY", deletedAt: null } }),
-      prisma.asset.count({ where: { status: "DISPOSED", deletedAt: null } }),
-      prisma.asset.count({ where: { status: "RENTED", deletedAt: null } }),
       prisma.asset.findMany({
         where: { status: { in: ["FAULTY", "MAINTENANCE"] }, deletedAt: null },
         include: { product: { include: { productCategory: true } }, warehouse: true },
         orderBy: { updatedAt: "desc" },
         take: 5
       }),
-      prisma.product.findMany({
-        select: { productCategory: true, _count: { select: { assets: true } } }
+      prisma.asset.groupBy({
+        by: ["productId"],
+        where: { deletedAt: null },
+        _count: { _all: true },
       })
     ]);
+
+    const statusCounts = statusGroups.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status] = item._count._all;
+      return acc;
+    }, {});
+
+    const [
+      inStockLooseCount,
+      installedCount,
+      deployedCount,
+      maintenanceCount,
+      faultyCount,
+      disposedCount,
+      rentedCount,
+      reservedCount,
+      handedOverCount,
+    ] = [
+      statusCounts.IN_STOCK || 0,
+      statusCounts.INSTALLED || 0,
+      statusCounts.DEPLOYED || 0,
+      statusCounts.MAINTENANCE || 0,
+      statusCounts.FAULTY || 0,
+      statusCounts.DISPOSED || 0,
+      statusCounts.RENTED || 0,
+      statusCounts.RESERVED || 0,
+      statusCounts.HANDED_OVER || 0,
+    ];
 
     // Hợp đồng sắp hết hạn
     const now = new Date(); now.setHours(0, 0, 0, 0);
@@ -54,9 +89,21 @@ export async function GET() {
       })
     );
 
-    const statsByCategory = categoryStats.reduce((acc: any, curr) => {
-      const name = curr.productCategory?.name || curr.productCategory?.code || "Khác";
-      acc[name] = (acc[name] || 0) + curr._count.assets;
+    const productsForCategoryStats = await prisma.product.findMany({
+      where: { id: { in: categoryGroups.map((item) => item.productId) } },
+      include: { productCategory: true },
+    });
+
+    const categoryByProductId = new Map(
+      productsForCategoryStats.map((product) => [
+        product.id,
+        product.productCategory?.name || product.productCategory?.code || "Khác",
+      ])
+    );
+
+    const statsByCategory = categoryGroups.reduce<Record<string, number>>((acc, curr) => {
+      const name = categoryByProductId.get(curr.productId) || "Khác";
+      acc[name] = (acc[name] || 0) + curr._count._all;
       return acc;
     }, {});
 
@@ -66,9 +113,11 @@ export async function GET() {
     }));
 
     const statusChartData = [
-      { name: "Trong kho", value: warehouseStockCount, color: "#22c55e" },
+      { name: "Trong kho", value: inStockLooseCount, color: "#22c55e" },
+      { name: "Đã giữ", value: reservedCount, color: "#eab308" },
       { name: "Đã lắp trong server", value: installedCount, color: "#6366f1" },
       { name: "Đang dùng", value: deployedCount, color: "#3b82f6" },
+      { name: "Đã bàn giao", value: handedOverCount, color: "#7c3aed" },
       { name: "Đang thuê", value: rentedCount, color: "#8b5cf6" },
       { name: "Bảo trì", value: maintenanceCount, color: "#f59e0b" },
       { name: "Hỏng", value: faultyCount, color: "#ef4444" },
@@ -82,8 +131,10 @@ export async function GET() {
         installedInWarehouse: installedInWarehouseCount,
         maintenance: maintenanceCount, faulty: faultyCount,
         disposed: disposedCount,
+        reserved: reservedCount,
+        handedOver: handedOverCount,
         rented: rentedCount,
-        total: inStockLooseCount + installedCount + deployedCount + maintenanceCount + faultyCount + disposedCount + rentedCount
+        total: activeTotalCount
       },
       alerts,
       statsByCategory,
@@ -92,7 +143,7 @@ export async function GET() {
       trend7Days,
       expiringRentals
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Lỗi lấy dữ liệu dashboard" }, { status: 500 });
   }
 }

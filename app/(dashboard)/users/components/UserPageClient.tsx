@@ -35,8 +35,9 @@ export default function UserPageClient() {
             setUsers(responseJson.data);
             setTotal(responseJson.total);
             setPage(responseJson.page);
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Thất bại khi lấy dữ liệu người dùng";
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -48,11 +49,11 @@ export default function UserPageClient() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center bg-white p-4 shadow rounded-lg mb-4">
+            <div className="flex flex-col gap-3 bg-white p-4 shadow rounded-lg mb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p className="text-gray-500">Tổng cộng: {total} người dùng</p>
                 </div>
-                <Button onClick={() => setIsCreateModalOpen(true)}>
+                <Button onClick={() => setIsCreateModalOpen(true)} className="w-full sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" /> Thêm mới
                 </Button>
             </div>
@@ -60,7 +61,7 @@ export default function UserPageClient() {
             <UserTable users={users} loading={loading} onRefresh={() => fetchUsers(page)} />
 
             {/* Pagination Controls */}
-            <div className="flex justify-end items-center gap-4 mt-4 text-sm font-medium">
+            <div className="flex items-center justify-between gap-3 mt-4 text-sm font-medium sm:justify-end">
                 <Button
                     variant="outline"
                     disabled={page <= 1}

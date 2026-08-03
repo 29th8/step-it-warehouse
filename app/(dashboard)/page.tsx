@@ -14,9 +14,14 @@ import {
 
 type DashboardSummary = {
   inStock: number;
+  installed: number;
+  installedInWarehouse: number;
   deployed: number;
+  reserved: number;
+  handedOver: number;
   maintenance: number;
   faulty: number;
+  disposed: number;
   rented: number;
   total: number;
 };
@@ -58,9 +63,14 @@ type DashboardData = {
 const emptyDashboardData: DashboardData = {
   summary: {
     inStock: 0,
+    installed: 0,
+    installedInWarehouse: 0,
     deployed: 0,
+    reserved: 0,
+    handedOver: 0,
     maintenance: 0,
     faulty: 0,
+    disposed: 0,
     rented: 0,
     total: 0,
   },
@@ -126,10 +136,10 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) return (
-    <div className="p-10 text-center">
+    <div className="p-3 sm:p-4 md:p-10 text-center">
       <div className="animate-pulse space-y-4">
-        <div className="grid grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-slate-200 rounded-xl" />)}</div>
-        <div className="grid grid-cols-2 gap-4">{[...Array(2)].map((_, i) => <div key={i} className="h-64 bg-slate-200 rounded-xl" />)}</div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-slate-200 rounded-xl" />)}</div>
+        <div className="grid gap-4 lg:grid-cols-2">{[...Array(2)].map((_, i) => <div key={i} className="h-64 bg-slate-200 rounded-xl" />)}</div>
       </div>
     </div>
   );
@@ -147,9 +157,9 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6 bg-slate-50 min-h-screen">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hệ thống Kho IT - Step Co.</h1>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">Hệ thống Kho IT - Step Co.</h1>
         <p className="text-slate-500 text-sm mt-1">Cập nhật thời gian thực từ hạ tầng kho thiết bị.</p>
       </div>
 
@@ -171,7 +181,7 @@ export default function DashboardPage() {
       )}
 
       {/* KPI CARDS */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 md:gap-4 lg:grid-cols-5">
         {[
           { title: "Tổng thiết bị", value: summary.total, icon: <Package className="text-blue-600 w-5 h-5" />, href: "/assets", color: "text-slate-900" },
           { title: "Trong kho", value: summary.inStock, icon: <CheckCircle className="text-green-600 w-5 h-5" />, href: "/assets", color: "text-green-600" },
@@ -186,7 +196,7 @@ export default function DashboardPage() {
                 {card.icon}
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                <div className={`text-3xl font-bold ${card.color}`}>{card.value}</div>
+                <div className={`text-2xl md:text-3xl font-bold ${card.color}`}>{card.value}</div>
               </CardContent>
             </Card>
           </Link>

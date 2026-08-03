@@ -25,8 +25,8 @@ export type ProductAttributeDefinition = {
 
 type ProductAttributeFieldsProps = {
   definitions: ProductAttributeDefinition[];
-  values: Record<string, any>;
-  onChange: (values: Record<string, any>) => void;
+  values: Record<string, unknown>;
+  onChange: (values: Record<string, unknown>) => void;
 };
 
 export function ProductAttributeFields({ definitions, values, onChange }: ProductAttributeFieldsProps) {
@@ -36,7 +36,7 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
 
   if (activeDefinitions.length === 0) return null;
 
-  const setValue = (key: string, value: any) => {
+  const setValue = (key: string, value: unknown) => {
     onChange({ ...values, [key]: value });
   };
 
@@ -47,6 +47,7 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
         {activeDefinitions.map((definition) => {
           const label = `${definition.label}${definition.required ? " *" : ""}`;
           const currentValue = values?.[definition.key] ?? "";
+          const inputValue = typeof currentValue === "string" || typeof currentValue === "number" ? currentValue : "";
           const positiveIntegerKeys = ["uHeight", "dimmSlots", "driveBays"];
           const isPositiveIntegerAttribute = positiveIntegerKeys.includes(definition.key);
 
@@ -65,7 +66,7 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
                   value={String(currentValue)}
                   onValueChange={(value) => setValue(definition.key, definition.inputType === "BOOLEAN" ? value === "true" : value)}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="h-11 bg-white sm:h-9">
                     <SelectValue placeholder={`Chọn ${definition.label.toLowerCase()}`} />
                   </SelectTrigger>
                   <SelectContent>
@@ -87,8 +88,8 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
                 type={definition.inputType === "NUMBER" ? "number" : "text"}
                 min={isPositiveIntegerAttribute ? 1 : undefined}
                 step={isPositiveIntegerAttribute ? 1 : undefined}
-                className="bg-white"
-                value={currentValue}
+                className="h-11 bg-white sm:h-9"
+                value={inputValue}
                 placeholder={`Nhập ${definition.label.toLowerCase()}`}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -104,7 +105,7 @@ export function ProductAttributeFields({ definitions, values, onChange }: Produc
   );
 }
 
-export function validateRequiredAttributes(definitions: ProductAttributeDefinition[], values: Record<string, any>) {
+export function validateRequiredAttributes(definitions: ProductAttributeDefinition[], values: Record<string, unknown>) {
   const missing = definitions
     .filter((definition) => definition.isActive && definition.required)
     .filter((definition) => values?.[definition.key] === undefined || values?.[definition.key] === null || String(values?.[definition.key]).trim() === "")

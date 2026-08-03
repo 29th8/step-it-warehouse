@@ -48,8 +48,8 @@ export default function CreateRentalPage() {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.data || [];
         setAssets(list);
-      } catch (error) {
-        toast.error("Không thể tải danh sách thiết bị khả dụng.");
+    } catch {
+      toast.error("Không thể tải danh sách thiết bị khả dụng.");
       } finally {
         setIsLoadingAssets(false);
       }
@@ -88,22 +88,23 @@ export default function CreateRentalPage() {
 
       router.push("/rentals");
       router.refresh();
-    } catch (error: any) {
-      toast.error(error.message || "Có lỗi xảy ra khi tạo hợp đồng.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Có lỗi xảy ra khi tạo hợp đồng.";
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="container max-w-2xl mx-auto p-6">
-      <Button variant="ghost" onClick={() => router.back()} className="mb-6 pl-0 hover:pl-2">
+    <div className="container max-w-2xl mx-auto p-3 sm:p-4 md:p-6">
+      <Button variant="ghost" onClick={() => router.back()} className="mb-4 md:mb-6 pl-0 hover:pl-2">
         <ArrowLeft className="mr-2 h-4 w-4" /> Quay lại danh sách
       </Button>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Tạo Hợp Đồng Thuê</CardTitle>
+          <CardTitle className="text-xl md:text-2xl">Tạo Hợp Đồng Thuê</CardTitle>
           <CardDescription>
             Chọn thiết bị có sẵn trong kho và nhập thông tin khách hàng thuê.
           </CardDescription>
@@ -185,11 +186,11 @@ export default function CreateRentalPage() {
 
           </CardContent>
 
-          <CardFooter className="flex justify-end gap-2 border-t pt-6">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+          <CardFooter className="flex flex-col-reverse gap-2 border-t pt-6 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => router.back()} className="w-full sm:w-auto">
               Hủy bỏ
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang xử lý...

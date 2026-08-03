@@ -7,7 +7,12 @@ import { WarehouseTable } from "@/components/warehouse/warehouse-table";
 import { CreateWarehouseModal } from "@/components/warehouse/create-warehouse-modal";
 
 export default function WarehousesPage() {
-  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<Array<{
+    id: string;
+    name: string;
+    location?: string | null;
+    _count?: { racks?: number; assets?: number };
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -62,16 +67,16 @@ export default function WarehousesPage() {
   );
 
   return (
-    <div className="p-8 space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-b pb-6">
+    <div className="p-3 sm:p-4 md:p-8 space-y-4 md:space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-4 md:pb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-800"><Warehouse className="w-6 h-6 text-blue-600" /> Quản lý Kho</h1>
           <p className="text-sm text-slate-500 mt-1">Danh sách các kho chứa và trung tâm dữ liệu.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:gap-3">
+          <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input placeholder="Tìm tên kho, vị trí..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 bg-white" />
+            <Input placeholder="Tìm tên kho, vị trí..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 pl-9 bg-white md:h-9" />
           </div>
           <CreateWarehouseModal onRefresh={fetchWarehouses} />
         </div>

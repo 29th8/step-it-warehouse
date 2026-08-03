@@ -6,9 +6,22 @@ import { ArrowLeft, MapPin, Grid3x3, Server, Loader2, AlertTriangle, Package, Bo
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RackVisualizer } from "@/components/racks/RackVisualizer";
 import { AssetActionMenu } from "@/components/inventory/asset-action-menu";
+
+type RackAsset = {
+  id: string;
+  serialNumber: string;
+  status: string;
+  owner?: string | null;
+  rackUnit: number | null;
+  uHeight: number;
+  product?: {
+    name?: string | null;
+    category?: string | null;
+  } | null;
+  components?: RackAsset[];
+};
 
 interface RackDetail {
   id: string;
@@ -16,7 +29,7 @@ interface RackDetail {
   type: string;
   totalUnits: number | null;
   warehouse: { name: string; location: string };
-  assets: any[];
+  assets: RackAsset[];
 }
 
 export default function RackDetailPage() {
@@ -34,12 +47,16 @@ export default function RackDetailPage() {
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
 
-  const openAssetDetail = (asset: any) => {
+  const openAssetDetail = (asset: RackAsset) => {
     setDetailAsset({ id: asset.id, serialNumber: asset.serialNumber });
     setDetailOpenToken((token) => token + 1);
   };
@@ -54,8 +71,9 @@ export default function RackDetailPage() {
 
       const json = await res.json();
       setRack(json.data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không tìm thấy tủ rack";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -66,12 +84,12 @@ export default function RackDetailPage() {
   }, [rackId]);
 
   if (loading) {
-    return <div className="h-[80vh] flex flex-col items-center justify-center space-y-4"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /><p className="text-slate-500">Đang tải mô hình tủ rack...</p></div>;
+    return <div className="h-[80vh] flex flex-col items-center justify-center space-y-4 px-4"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /><p className="text-slate-500">Đang tải mô hình tủ rack...</p></div>;
   }
 
   if (error || !rack) {
     return (
-      <div className="p-8 text-center space-y-4">
+      <div className="p-4 md:p-8 text-center space-y-4">
         <AlertTriangle className="w-16 h-16 text-red-500 mx-auto" />
         <h2 className="text-2xl font-bold text-slate-800">Lỗi tải dữ liệu</h2>
         <p className="text-slate-500">{error}</p>
@@ -95,18 +113,18 @@ export default function RackDetailPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-3 sm:p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8 animate-in fade-in duration-500">
 
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-start gap-3 md:gap-4">
         <Button variant="outline" size="icon" onClick={() => router.back()} className="rounded-full shadow-sm"><ArrowLeft className="w-4 h-4" /></Button>
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             {isDatacenter ? <Grid3x3 className="w-8 h-8 text-blue-600" /> : <Box className="w-8 h-8 text-amber-600" />}
-            {rack.name}
+            <span className="truncate">{rack.name}</span>
           </h1>
-          <div className="flex items-center gap-3 mt-1">
-            <p className="text-slate-500 flex items-center gap-2">
+          <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <p className="text-slate-500 flex items-center gap-2 text-sm">
               <MapPin className="w-4 h-4" /> {rack.warehouse.name} ({rack.warehouse.location || "Chưa cập nhật vị trí"})
             </p>
             <Badge variant="outline" className={isDatacenter ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"}>
@@ -217,7 +235,7 @@ export default function RackDetailPage() {
                             {/* LINH KIỆN BÊN TRONG */}
                             {isOpen && compCount > 0 && (
                               <div className="bg-slate-50 border-t border-slate-100 divide-y divide-slate-100">
-                                {asset.components.map((comp: any) => (
+                                {(asset.components || []).map((comp) => (
                                   <div
                                     key={comp.id}
                                     onClick={() => openAssetDetail(comp)}
@@ -250,7 +268,7 @@ export default function RackDetailPage() {
                   <Server className="w-5 h-5 text-blue-500" /> Sơ đồ lắp đặt vật lý
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-8 bg-slate-950 flex justify-center">
+              <CardContent className="p-3 sm:p-4 md:p-8 bg-slate-950 flex justify-center overflow-x-auto">
                 <RackVisualizer totalUnits={rack.totalUnits!} assets={rack.assets} />
               </CardContent>
             </Card>
@@ -337,7 +355,7 @@ export default function RackDetailPage() {
                         {/* LINH KIỆN BÊN TRONG */}
                         {isOpen && compCount > 0 && (
                           <div className="bg-slate-50 border-t border-slate-100 divide-y divide-slate-100">
-                            {asset.components.map((comp: any) => (
+                            {(asset.components || []).map((comp) => (
                               <div
                                 key={comp.id}
                                 onClick={() => openAssetDetail(comp)}

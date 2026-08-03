@@ -50,8 +50,9 @@ export default function UserTable({ users, loading, onRefresh }: UserTableProps)
                 user.isActive ? "Đã vô hiệu hoá tài khoản" : "Đã kích hoạt tài khoản"
             );
             onRefresh();
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Có lỗi xảy ra";
+            toast.error(message);
         }
     };
 
@@ -67,14 +68,76 @@ export default function UserTable({ users, loading, onRefresh }: UserTableProps)
             }
             toast.success("Đã xóa tài khoản thành công");
             onRefresh();
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Không thể xóa người dùng";
+            toast.error(message);
         }
     };
 
     return (
         <>
             <div className="rounded-md border bg-white">
+                <div className="md:hidden">
+                    {loading ? (
+                        <div className="px-4 py-10 text-center text-sm text-slate-500">Đang tải...</div>
+                    ) : users.length === 0 ? (
+                        <div className="px-4 py-10 text-center text-sm text-slate-400">Không có dữ liệu</div>
+                    ) : (
+                        <div className="divide-y divide-slate-100">
+                            {users.map((user) => (
+                                <article key={user.id} className="space-y-3 p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-bold text-slate-900">{user.name}</p>
+                                            <p className="mt-1 truncate font-mono text-xs text-slate-500">@{user.username}</p>
+                                        </div>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" className="h-9 w-9 shrink-0 p-0">
+                                                    <MoreHorizontal className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="bg-white">
+                                                <DropdownMenuItem onClick={() => setEditingUser(user)}>
+                                                    <Edit className="mr-2 h-4 w-4" />
+                                                    Sửa
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => toggleUserStatus(user)}>
+                                                    {user.isActive ? (
+                                                        <><Ban className="text-red-500 mr-2 h-4 w-4" /> <span className="text-red-500">Vô hiệu hoá</span></>
+                                                    ) : (
+                                                        <><CheckCircle className="text-green-500 mr-2 h-4 w-4" /> <span className="text-green-500">Kích hoạt lại</span></>
+                                                    )}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setResettingUser(user)}>
+                                                    <KeyRound className="mr-2 h-4 w-4 text-blue-500" />
+                                                    <span className="text-blue-500">Đặt lại mật khẩu</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => deleteUser(user)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                                    <Trash className="mr-2 h-4 w-4" />
+                                                    Xóa
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>{user.role}</Badge>
+                                        {user.isActive ? (
+                                            <Badge className="bg-green-500 hover:bg-green-500">Hoạt động</Badge>
+                                        ) : (
+                                            <Badge variant="destructive">Không hoạt động</Badge>
+                                        )}
+                                    </div>
+                                    <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                                        Ngày tạo: {format(new Date(user.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden md:block">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -157,6 +220,7 @@ export default function UserTable({ users, loading, onRefresh }: UserTableProps)
                         )}
                     </TableBody>
                 </Table>
+                </div>
             </div>
 
             {editingUser && (

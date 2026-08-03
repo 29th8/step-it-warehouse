@@ -5,22 +5,55 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   ClipboardList, Plus, Search, RefreshCw, Printer,
-  CheckCircle2, Clock, Loader2, X, Trash2, Package, Server
+  CheckCircle2, Clock, Loader2, X, Package, Server
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-function printHandover(r: any) {
+type HandoverAsset = {
+  id: string;
+  serialNumber: string;
+  status?: string;
+  parentId?: string | null;
+  product?: {
+    name?: string | null;
+    category?: string | null;
+    productCategory?: { isMain?: boolean | null } | null;
+  } | null;
+  warehouse?: { name?: string | null } | null;
+};
+
+type HandoverItem = {
+  id: string;
+  note?: string | null;
+  asset?: HandoverAsset | null;
+};
+
+type HandoverRecord = {
+  id: string;
+  code: string;
+  recipientName: string;
+  department: string;
+  purpose: string;
+  supervisorName: string;
+  handoverDate: string | Date;
+  expectedReturn?: string | Date | null;
+  note?: string | null;
+  status: "ACTIVE" | "RETURNED" | string;
+  user?: { name?: string | null } | null;
+  items: HandoverItem[];
+};
+
+function printHandover(r: HandoverRecord) {
   const win = window.open("", "_blank", "width=900,height=700");
   if (!win) { alert("Vui lòng cho phép popup để in"); return; }
 
-  const items = r.items?.map((item: any, idx: number) => `
+  const items = r.items?.map((item, idx) => `
     <tr>
       <td style="border:1px solid #cbd5e1;padding:8px;text-align:center">${idx + 1}</td>
       <td style="border:1px solid #cbd5e1;padding:8px;font-weight:600">${item.asset?.product?.name || ""}</td>
@@ -107,7 +140,7 @@ function printHandover(r: any) {
 }
 
 export default function HandoversPage() {
-  const [records, setRecords] = useState<any[]>([]);
+  const [records, setRecords] = useState<HandoverRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -121,15 +154,15 @@ export default function HandoversPage() {
     expectedReturn: "", note: ""
   });
   const [assetSearch, setAssetSearch] = useState("");
-  const [assetResults, setAssetResults] = useState<any[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<any[]>([]);
+  const [assetResults, setAssetResults] = useState<HandoverAsset[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<HandoverAsset[]>([]);
   const [isSearchingAsset, setIsSearchingAsset] = useState(false);
 
   // Print + return state
-  const [printRecord, setPrintRecord] = useState<any | null>(null);
+  const [printRecord, setPrintRecord] = useState<HandoverRecord | null>(null);
   const [returnConfirmId, setReturnConfirmId] = useState<string | null>(null);
 
-  const isMainAsset = (asset: any) => asset?.product?.productCategory?.isMain === true;
+  const isMainAsset = (asset?: HandoverAsset | null) => asset?.product?.productCategory?.isMain === true;
   const [isReturning, setIsReturning] = useState(false);
 
   const fetchRecords = useCallback(async () => {
@@ -139,7 +172,7 @@ export default function HandoversPage() {
       if (statusFilter !== "ALL") params.append("status", statusFilter);
       if (search) params.append("search", search);
       const res = await fetch(`/api/handovers?${params}`);
-      const json = await res.json();
+      const json: HandoverRecord[] = await res.json();
       setRecords(Array.isArray(json) ? json : []);
     } catch { toast.error("Lỗi tải dữ liệu"); }
     finally { setLoading(false); }
@@ -151,7 +184,7 @@ export default function HandoversPage() {
   }, [fetchRecords]);
 
   // Lấy linh kiện con khi chọn server
-  const fetchServerChildren = async (serverId: string): Promise<any[]> => {
+  const fetchServerChildren = async (serverId: string): Promise<HandoverAsset[]> => {
     try {
       const res = await fetch(`/api/assets?parentId=${serverId}&pageSize=100&page=1`);
       const json = await res.json();
@@ -160,7 +193,7 @@ export default function HandoversPage() {
   };
 
   // Xử lý khi chọn asset từ kết quả tìm kiếm
-  const handleSelectAsset = async (asset: any) => {
+  const handleSelectAsset = async (asset: HandoverAsset) => {
     const isServer = isMainAsset(asset);
     setAssetSearch("");
     setAssetResults([]);
@@ -204,7 +237,7 @@ export default function HandoversPage() {
         const json = await res.json();
         const list = Array.isArray(json) ? json : json.data || [];
         // Lọc ra những cái chưa được chọn (trừ linh kiện con của server đã chọn)
-        setAssetResults(list.filter((a: any) => !selectedAssets.find(s => s.id === a.id)));
+        setAssetResults((list as HandoverAsset[]).filter((a) => !selectedAssets.find(s => s.id === a.id)));
       } catch { setAssetResults([]); }
       finally { setIsSearchingAsset(false); }
     }, 300);
@@ -232,7 +265,10 @@ export default function HandoversPage() {
       setForm({ recipientName: "", department: "", purpose: "", supervisorName: "", handoverDate: format(new Date(), "yyyy-MM-dd"), expectedReturn: "", note: "" });
       fetchRecords();
       setTimeout(() => { setPrintRecord(data); printHandover(data); }, 300);
-    } catch (err: any) { toast.error(err.message); }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Lỗi tạo biên bản";
+      toast.error(message);
+    }
     finally { setIsSaving(false); }
   };
 
@@ -245,46 +281,91 @@ export default function HandoversPage() {
       toast.success(data.message);
       setReturnConfirmId(null);
       fetchRecords();
-    } catch (err: any) { toast.error(err.message); }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Lỗi hoàn trả vật tư";
+      toast.error(message);
+    }
     finally { setIsReturning(false); }
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6 max-w-[1400px] mx-auto">
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-5">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 md:pb-5">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
             <ClipboardList className="w-6 h-6 text-blue-600" /> Biên bản Bàn giao Vật tư
           </h1>
           <p className="text-sm text-slate-500 mt-1">Quản lý việc xuất vật tư cho các bộ phận, in biên bản ký xác nhận.</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsCreateOpen(true)}>
+        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white md:w-auto" onClick={() => setIsCreateOpen(true)}>
           <Plus className="w-4 h-4 mr-2" /> Tạo Biên bản mới
         </Button>
       </div>
 
       {/* FILTERS */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="Tìm mã BB, tên người nhận, bộ phận..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
+          <Input placeholder="Tìm mã BB, tên người nhận, bộ phận..." value={search} onChange={e => setSearch(e.target.value)} className="h-11 pl-9 bg-white md:h-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[170px] bg-white"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-11 w-full bg-white md:h-9 md:w-[170px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Tất cả</SelectItem>
             <SelectItem value="ACTIVE">Đang mang đi</SelectItem>
             <SelectItem value="RETURNED">Đã hoàn trả</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="icon" onClick={fetchRecords} disabled={loading}>
+        <Button variant="outline" size="icon" onClick={fetchRecords} disabled={loading} className="h-11 w-full md:h-9 md:w-9">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
       {/* TABLE */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="md:hidden">
+          {loading ? (
+            <div className="px-4 py-10 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600" /></div>
+          ) : records.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">Chưa có biên bản nào.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {records.map((r) => (
+                <article key={r.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-bold text-blue-600">{r.code}</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-slate-900">{r.recipientName}</p>
+                      <p className="truncate text-xs text-slate-400">{r.department}</p>
+                    </div>
+                    {r.status === "ACTIVE"
+                      ? <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1" />Đang mang đi</Badge>
+                      : <Badge className="bg-green-100 text-green-700 border-green-200"><CheckCircle2 className="w-3 h-3 mr-1" />Đã hoàn trả</Badge>}
+                  </div>
+                  <div className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <p><span className="font-medium text-slate-500">Mục đích: </span>{r.purpose}</p>
+                    <p><span className="font-medium text-slate-500">Vật tư: </span>{r.items.length} thiết bị</p>
+                    <p><span className="font-medium text-slate-500">Ngày bàn giao: </span>{format(new Date(r.handoverDate), "dd/MM/yyyy")}</p>
+                    <p><span className="font-medium text-slate-500">Dự kiến trả: </span>{r.expectedReturn ? format(new Date(r.expectedReturn), "dd/MM/yyyy") : "—"}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 text-slate-600" onClick={() => printHandover(r)}>
+                      <Printer className="w-4 h-4 mr-1" /> In
+                    </Button>
+                    {r.status === "ACTIVE" && (
+                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => setReturnConfirmId(r.id)}>
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Xác nhận trả
+                      </Button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block">
         <Table>
           <TableHeader className="bg-slate-50">
             <TableRow>
@@ -339,21 +420,22 @@ export default function HandoversPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* CREATE MODAL */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-white sm:max-w-[700px] p-0 overflow-hidden">
+        <DialogContent className="bg-white w-[calc(100vw-1rem)] max-w-[700px] p-0 overflow-hidden">
           <DialogHeader className="p-6 pb-4 border-b bg-slate-50">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <ClipboardList className="w-5 h-5 text-blue-600" /> Tạo Biên bản Bàn giao mới
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreate}>
-            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            <div className="p-4 md:p-6 space-y-5 max-h-[72vh] overflow-y-auto">
 
               {/* THÔNG TIN BÀN GIAO */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-slate-700">Người nhận *</label>
                   <Input placeholder="VD: Nguyễn Văn A" value={form.recipientName} onChange={e => setForm({ ...form, recipientName: e.target.value })} className="bg-white" />
@@ -362,7 +444,7 @@ export default function HandoversPage() {
                   <label className="text-sm font-semibold text-slate-700">Bộ phận *</label>
                   <Input placeholder="VD: Kinh doanh, IT, Marketing..." value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} className="bg-white" />
                 </div>
-                <div className="col-span-2 space-y-1.5">
+                <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-semibold text-slate-700">Mục đích sử dụng *</label>
                   <Input placeholder="VD: Demo sản phẩm cho khách hàng ABC, Hội nghị 20/11..." value={form.purpose} onChange={e => setForm({ ...form, purpose: e.target.value })} className="bg-white" />
                 </div>
@@ -503,7 +585,7 @@ export default function HandoversPage() {
               </div>
             </div>
 
-            <DialogFooter className="p-4 border-t bg-slate-50 gap-2">
+            <DialogFooter className="p-4 border-t bg-slate-50 gap-2 sm:flex-row">
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Hủy</Button>
               <Button type="submit" disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ClipboardList className="w-4 h-4 mr-2" />}
@@ -614,7 +696,7 @@ export default function HandoversPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {printRecord.items?.map((item: any, idx: number) => (
+                    {printRecord.items?.map((item, idx) => (
                       <tr key={item.id}>
                         <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
                         <td className="border border-slate-300 p-2 font-medium">{item.asset?.product?.name}</td>

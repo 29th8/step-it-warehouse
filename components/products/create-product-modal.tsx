@@ -30,7 +30,7 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
     type: "",
     vendor: "",
     description: "",
-    attributes: {} as Record<string, any>
+    attributes: {} as Record<string, unknown>
   };
   const [formData, setFormData] = useState(initialForm);
   const selectedCategory = categories.find((category) => category.code === formData.category);
@@ -75,8 +75,9 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
 
       setIsOpen(false);
       onRefresh(); // Refresh bảng bên ngoài
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể thêm sản phẩm";
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -85,24 +86,24 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+        <Button className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
           <Plus className="w-4 h-4 mr-2" /> Thêm Sản phẩm
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="bg-white sm:max-w-[550px] p-0 overflow-hidden">
+      <DialogContent className="max-h-[92vh] w-[calc(100vw-1rem)] overflow-hidden bg-white p-0 sm:max-w-[620px]">
 
         {/* HEADER MODAL */}
-        <DialogHeader className="p-6 pb-4 border-b bg-slate-50">
-          <DialogTitle className="flex items-center gap-2 text-xl text-slate-800">
-            <Package className="w-5 h-5 text-blue-600" /> Tạo Danh mục mới
+        <DialogHeader className="border-b bg-slate-50 p-4 pb-4 pr-10 sm:p-6">
+          <DialogTitle className="flex items-center gap-2 text-lg text-slate-800 sm:text-xl">
+            <Package className="w-5 h-5 text-blue-600" /> Tạo sản phẩm mới
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
 
           {/* BODY CỦA FORM */}
-          <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[calc(92vh-142px)] space-y-5 overflow-y-auto p-4 sm:p-6">
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Tên sản phẩm *</label>
@@ -115,7 +116,7 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Model Number *</label>
                 <Input
@@ -132,7 +133,7 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
                   value={formData.category}
                   onValueChange={(v) => setFormData({ ...formData, category: v, attributes: {} })}
                 >
-                  <SelectTrigger className="bg-white">
+                    <SelectTrigger className="h-11 bg-white sm:h-9">
                     <SelectValue placeholder="Chọn danh mục" />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
@@ -146,7 +147,7 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Vendor / Hãng Sản Xuất *</label>
                 <Input
@@ -196,11 +197,11 @@ export function CreateProductModal({ onRefresh, categories, attributeDefinitions
 
           </div>
 
-          <DialogFooter className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving} className="bg-white">
+          <DialogFooter className="border-t bg-slate-50 p-4 sm:flex-row">
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving} className="w-full bg-white sm:w-auto">
               <X className="w-4 h-4 mr-2" /> Hủy
             </Button>
-            <Button type="submit" disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button type="submit" disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-700 text-white sm:w-auto">
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
               {isSaving ? "Đang xử lý..." : "Thêm Sản phẩm"}
             </Button>

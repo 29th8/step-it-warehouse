@@ -77,17 +77,17 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="bg-white">
+        <Button variant="outline" className="shrink-0 bg-white">
           <Tags className="mr-2 h-4 w-4" /> Danh mục
         </Button>
       </DialogTrigger>
-      <DialogContent className="bg-white sm:max-w-[760px]">
-        <DialogHeader>
-          <DialogTitle>{form.id ? "Sửa danh mục sản phẩm" : "Thêm danh mục sản phẩm"}</DialogTitle>
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] overflow-hidden bg-white p-0 sm:max-w-[760px]">
+        <DialogHeader className="border-b bg-slate-50 px-4 py-4 pr-10 sm:px-6">
+          <DialogTitle>{form.id ? "Sửa danh mục sản phẩm" : "Danh mục sản phẩm"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-          <form onSubmit={saveCategory} className="space-y-3 rounded-lg border bg-slate-50 p-4">
+        <div className="grid max-h-[calc(90vh-64px)] gap-4 overflow-y-auto p-4 lg:grid-cols-[280px_1fr] lg:gap-5 sm:p-5">
+          <form onSubmit={saveCategory} className="space-y-3 rounded-lg border bg-slate-50 p-3 sm:p-4">
             <div>
               <p className="text-sm font-semibold text-slate-800">{form.id ? "Thông tin danh mục" : "Danh mục mới"}</p>
               <p className="text-xs text-slate-500 mt-0.5">Tạo RAM, Storage, Module, Nguồn, Quạt hoặc nhóm thiết bị riêng.</p>
@@ -143,7 +143,7 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
             {categories.length === 0 ? (
               <div className="p-6 text-center text-sm text-slate-500">Chưa có danh mục.</div>
             ) : categories.map((category) => (
-              <div key={category.id} className="flex items-center justify-between gap-3 border-b p-3 last:border-b-0">
+              <div key={category.id} className="flex flex-col gap-3 border-b p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-semibold text-slate-800">{category.name}</p>
@@ -156,11 +156,12 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
                     {category._count?.products || 0} sản phẩm{category.description ? ` - ${category.description}` : ""}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:gap-1">
                   <Button
                     type="button"
-                    size="icon"
+                    size="sm"
                     variant="ghost"
+                    className="justify-center sm:size-9"
                     onClick={() => setForm({
                       id: category.id,
                       code: category.code,
@@ -170,15 +171,17 @@ export function ProductCategoryManager({ categories, onRefresh }: Props) {
                     })}
                   >
                     <Pencil className="h-4 w-4" />
+                    <span className="sm:hidden">Sửa</span>
                   </Button>
                   <Button
                     type="button"
-                    size="icon"
+                    size="sm"
                     variant="ghost"
-                    className="text-red-600 hover:text-red-700"
+                    className="justify-center text-red-600 hover:text-red-700 sm:size-9"
                     onClick={() => deleteCategory(category)}
                   >
                     <Trash2 className="h-4 w-4" />
+                    <span className="sm:hidden">Xóa</span>
                   </Button>
                 </div>
               </div>

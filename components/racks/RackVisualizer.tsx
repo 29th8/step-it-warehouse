@@ -9,7 +9,7 @@ interface AssetOnRack {
     serialNumber: string;
     rackUnit: number | null;
     uHeight: number; // Mặc định là 1 nếu null
-    product?: { name: string };
+    product?: { name?: string | null } | null;
     status?: string;
 }
 
@@ -35,7 +35,7 @@ export function RackVisualizer({ totalUnits = 42, assets }: RackVisualizerProps)
     };
 
     return (
-        <div className="w-full max-w-md mx-auto bg-slate-950 p-6 rounded-xl border-4 border-slate-800 shadow-2xl">
+        <div className="w-full max-w-md mx-auto bg-slate-950 p-3 sm:p-4 md:p-6 rounded-xl border-4 border-slate-800 shadow-2xl">
             <div className="space-y-1 relative">
                 {units.map((u) => {
                     // 1. Tìm asset có "chân" đặt tại U này
@@ -51,10 +51,10 @@ export function RackVisualizer({ totalUnits = 42, assets }: RackVisualizerProps)
                     const slotHeight = asset ? `${asset.uHeight * 40 + (asset.uHeight - 1) * 4}px` : "40px";
 
                     return (
-                        <div key={u} className="flex items-end gap-3 group relative" style={{ height: slotHeight }}>
+                        <div key={u} className="flex items-end gap-2 md:gap-3 group relative" style={{ height: slotHeight }}>
 
                             {/* Cột Số U Trái */}
-                            <div className="flex flex-col justify-between h-full w-8 py-2">
+                            <div className="flex flex-col justify-between h-full w-6 md:w-8 py-2">
                                 {/* Nếu là thiết bị nhiều U, hiển thị dải số U (VD: 12-10) */}
                                 {asset && asset.uHeight > 1 ? (
                                     <>
@@ -80,13 +80,13 @@ export function RackVisualizer({ totalUnits = 42, assets }: RackVisualizerProps)
                                     <TooltipProvider delayDuration={0}>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <div className="flex items-center justify-between px-4 w-full h-full">
-                                                    <div className="flex items-center gap-3">
+                                                <div className="flex items-center justify-between px-2 md:px-4 w-full h-full">
+                                                    <div className="flex min-w-0 items-center gap-2 md:gap-3">
                                                         {/* Icon to hơn nếu thiết bị to */}
                                                         <Server className={`${asset.uHeight > 1 ? "w-6 h-6" : "w-4 h-4"} text-blue-400 shrink-0`} />
 
-                                                        <div className="flex flex-col">
-                                                            <span className={`font-bold text-blue-100 ${asset.uHeight > 1 ? "text-sm" : "text-xs"}`}>
+                                                        <div className="flex min-w-0 flex-col">
+                                                            <span className={`truncate font-bold text-blue-100 ${asset.uHeight > 1 ? "text-xs md:text-sm" : "text-[11px] md:text-xs"}`}>
                                                                 {asset.product?.name || "Unknown Device"}
                                                             </span>
                                                             {asset.uHeight > 1 && (
@@ -116,7 +116,7 @@ export function RackVisualizer({ totalUnits = 42, assets }: RackVisualizerProps)
                             </div>
 
                             {/* Cột Số U Phải */}
-                            <span className="w-8 text-xs font-mono text-slate-500 group-hover:text-white transition-colors py-2">
+                            <span className="w-6 md:w-8 text-xs font-mono text-slate-500 group-hover:text-white transition-colors py-2">
                                 {u}
                             </span>
                         </div>
