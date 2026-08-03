@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Filter, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -106,6 +106,19 @@ export default function AssetListPage() {
     });
   }, [categories, categorySearch]);
 
+  const assetFilterSignature = useMemo(() => {
+    return JSON.stringify({
+      activeCategory,
+      searchQuery,
+      ownerFilter,
+      filterStatus,
+      attributeFilters,
+      definitionIds: selectedDefinitions.map((definition) => definition.id),
+    });
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions]);
+
+  const lastAssetFilterSignature = useRef(assetFilterSignature);
+
   useEffect(() => {
     const loadMeta = async () => {
       try {
@@ -163,7 +176,7 @@ export default function AssetListPage() {
     return params;
   }, [searchQuery, ownerFilter, filterStatus]);
 
-  const fetchAssets = useCallback(async (targetPage = page) => {
+  const fetchAssets = useCallback(async (targetPage: number) => {
     if (!activeCategory) {
       setAssets([]);
       setTotal(0);
@@ -190,7 +203,7 @@ export default function AssetListPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory, buildParams, page]);
+  }, [activeCategory, buildParams]);
 
   const fetchCategoryCounts = useCallback(async () => {
     try {
@@ -204,16 +217,20 @@ export default function AssetListPage() {
   }, [buildCategoryCountParams]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const filterChanged = lastAssetFilterSignature.current !== assetFilterSignature;
+    lastAssetFilterSignature.current = assetFilterSignature;
+
+    if (filterChanged && page !== 1) {
       setPage(1);
-      fetchAssets(1);
+      return;
+    }
+
+    const targetPage = filterChanged ? 1 : page;
+    const timer = setTimeout(() => {
+      fetchAssets(targetPage);
     }, 350);
     return () => clearTimeout(timer);
-  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions, fetchAssets]);
-
-  useEffect(() => {
-    fetchAssets(page);
-  }, [page, fetchAssets]);
+  }, [assetFilterSignature, page, fetchAssets]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
