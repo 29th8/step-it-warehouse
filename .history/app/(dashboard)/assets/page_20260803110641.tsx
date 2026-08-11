@@ -331,7 +331,7 @@ export default function AssetListPage() {
             <div className="p-2 bg-blue-100/50 text-blue-600 rounded-lg md:rounded-xl border border-blue-200/50 shadow-sm">
               <Package className="w-6 h-6" />
             </div>
-            Quản lý Thiết bị HÊHHEE
+            Quản lý Thiết bị
           </h1>
           <p className="text-slate-500 font-medium ml-1 mt-1">
             {selectedCategory?.name || "Danh mục"}: <strong className="text-blue-600 text-base">{total}</strong> thiết bị.
