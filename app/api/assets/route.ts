@@ -44,6 +44,44 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
 
+    if (searchParams.get("attributeValues") === "true") {
+      const category = searchParams.get("category");
+      const attributeKey = searchParams.get("attributeKey");
+      if (!category || !attributeKey || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(attributeKey)) {
+        return NextResponse.json({ error: "Tham số thuộc tính không hợp lệ." }, { status: 400 });
+      }
+
+      const products = await prisma.product.findMany({
+        where: {
+          productCategory: {
+            OR: [{ id: category }, { code: category.toUpperCase() }],
+          },
+          assets: { some: { deletedAt: null } },
+        },
+        select: { attributes: true },
+      });
+
+      const values = new Map<string, string>();
+      for (const product of products) {
+        const attributes = product.attributes && typeof product.attributes === "object" && !Array.isArray(product.attributes)
+          ? product.attributes as Record<string, unknown>
+          : null;
+        const rawValue = attributes?.[attributeKey];
+        if (typeof rawValue !== "string" && typeof rawValue !== "number") continue;
+
+        const value = String(rawValue).trim();
+        if (!value) continue;
+        const normalizedValue = value.toLocaleLowerCase("vi");
+        if (!values.has(normalizedValue)) values.set(normalizedValue, value);
+      }
+
+      return NextResponse.json({
+        data: Array.from(values.values()).sort((a, b) =>
+          a.localeCompare(b, "vi", { numeric: true, sensitivity: "base" })
+        ),
+      });
+    }
+
     if (type === "available_components") {
       const components = await prisma.asset.findMany({
         where: {

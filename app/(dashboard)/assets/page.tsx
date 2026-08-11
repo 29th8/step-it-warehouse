@@ -30,6 +30,10 @@ type CategoryCountsResponse = {
   data?: Record<string, number>;
 };
 
+type AttributeValuesResponse = {
+  data?: string[];
+};
+
 function parseList<T>(json: unknown): T[] {
   if (Array.isArray(json)) return json as T[];
   if (json && typeof json === "object" && "data" in json && Array.isArray((json as { data?: unknown }).data)) {
@@ -64,6 +68,7 @@ export default function AssetListPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
+  const [ramSpeedOptions, setRamSpeedOptions] = useState<string[]>([]);
   const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
@@ -119,6 +124,18 @@ export default function AssetListPage() {
 
   const lastAssetFilterSignature = useRef(assetFilterSignature);
 
+  const fetchRamSpeedOptions = useCallback(async () => {
+    const params = new URLSearchParams({
+      attributeValues: "true",
+      category: "MEMORY",
+      attributeKey: "speed",
+    });
+    const res = await fetch(`/api/assets?${params.toString()}`);
+    const json: AttributeValuesResponse = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(getApiError(json, "Không thể tải danh sách tốc độ RAM"));
+    setRamSpeedOptions(Array.isArray(json.data) ? json.data : []);
+  }, []);
+
   useEffect(() => {
     const loadMeta = async () => {
       try {
@@ -142,6 +159,11 @@ export default function AssetListPage() {
     loadMeta();
   }, []);
 
+  useEffect(() => {
+    if (activeCategory !== "MEMORY") return;
+    fetchRamSpeedOptions().catch(() => setRamSpeedOptions([]));
+  }, [activeCategory, fetchRamSpeedOptions]);
+
   const buildParams = useCallback((targetPage: number) => {
     const params = new URLSearchParams();
     params.append("pageSize", String(PAGE_SIZE));
@@ -155,7 +177,8 @@ export default function AssetListPage() {
     for (const definition of selectedDefinitions) {
       const value = attributeFilters[definition.key];
       if (!value || value === "none") continue;
-      if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN" || definition.inputType === "NUMBER") {
+      const forceExactMatch = activeCategory === "MEMORY" && definition.key === "speed";
+      if (forceExactMatch || definition.inputType === "SELECT" || definition.inputType === "BOOLEAN" || definition.inputType === "NUMBER") {
         params.append(`attr_${definition.key}`, value);
       } else {
         params.append(`attrLike_${definition.key}`, value);
@@ -242,6 +265,9 @@ export default function AssetListPage() {
   const refreshAll = () => {
     fetchAssets(page);
     fetchCategoryCounts();
+    if (activeCategory === "MEMORY") {
+      fetchRamSpeedOptions().catch(() => setRamSpeedOptions([]));
+    }
   };
 
   const handleCategoryChange = (categoryCode: string) => {
@@ -278,6 +304,27 @@ export default function AssetListPage() {
     const controlClassName = variant === "sheet"
       ? "w-full h-10 bg-white border-slate-200"
       : "w-[160px] h-9 bg-slate-50 border-slate-200 shrink-0";
+
+    if (activeCategory === "MEMORY" && definition.key === "speed") {
+      return (
+        <div key={definition.id} className={wrapperClassName}>
+          {variant === "sheet" && <label className="text-sm font-medium text-slate-700">{definition.label}</label>}
+          <Select value={value || "none"} onValueChange={(next) => setAttributeFilter(definition.key, next)}>
+            <SelectTrigger className={controlClassName}>
+              <SelectValue placeholder={definition.label} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">-- {definition.label} --</SelectItem>
+              {ramSpeedOptions.map((speed) => (
+                <SelectItem key={speed.toLocaleLowerCase("vi")} value={speed}>
+                  {speed}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+    }
 
     if (definition.inputType === "SELECT" || definition.inputType === "BOOLEAN") {
       const options = definition.inputType === "BOOLEAN"
