@@ -157,7 +157,6 @@ jobs:
             exit 11
           fi
 
-          chmod +x scripts/deploy-vps.sh scripts/backup.sh docker/entrypoint.sh
           bash scripts/deploy-vps.sh "$DEPLOY_IMAGE"
           REMOTE_SCRIPT
 
