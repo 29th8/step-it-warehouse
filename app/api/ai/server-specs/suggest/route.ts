@@ -23,7 +23,21 @@ function readStringField(body: Record<string, unknown>, key: string) {
   return typeof body[key] === "string" ? body[key].trim() : "";
 }
 
-function buildPayload(body: Record<string, unknown>) {
+type ProductCategoryForAi = {
+  code: string;
+  name: string;
+  isMain: boolean;
+  attributeDefinitions: Array<{
+    key: string;
+    label: string;
+    inputType: string;
+    required: boolean;
+    isActive: boolean;
+    options: Array<{ value: string; label: string | null }>;
+  }>;
+};
+
+function buildPayload(body: Record<string, unknown>, category: ProductCategoryForAi) {
   return {
     name: readStringField(body, "name"),
     modelNumber: readStringField(body, "modelNumber"),
@@ -31,7 +45,22 @@ function buildPayload(body: Record<string, unknown>) {
     serialNumber: readStringField(body, "serialNumber"),
     manufacturer: readStringField(body, "vendor"),
     vendor: readStringField(body, "vendor"),
-    categoryCode: "SERVER",
+    type: readStringField(body, "type"),
+    categoryCode: category.code,
+    categoryName: category.name,
+    isMainCategory: category.isMain,
+    attributesSchema: category.attributeDefinitions.map((definition) => ({
+      key: definition.key,
+      label: definition.label,
+      inputType: definition.inputType,
+      required: definition.required,
+      options: definition.options.map((option) => ({
+        value: option.value,
+        label: option.label || option.value,
+      })),
+    })),
+    instruction:
+      "Hãy gợi ý thông tin kỹ thuật cho đúng danh mục sản phẩm này. Chỉ trả về các field tĩnh và attributes có trong attributesSchema.",
   };
 }
 
@@ -46,9 +75,10 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json() as Record<string, unknown>;
-    if (body.category !== "SERVER") {
+    const categoryCode = readStringField(body, "category").toUpperCase();
+    if (!categoryCode) {
       return NextResponse.json(
-        { error: "AI chỉ hỗ trợ điền thông tin cho danh mục SERVER." },
+        { error: "Vui lòng chọn danh mục trước khi dùng AI." },
         { status: 400 },
       );
     }
@@ -60,20 +90,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const serverCategory = await prisma.productCategory.findFirst({
-      where: { code: "SERVER" },
+    const productCategory = await prisma.productCategory.findFirst({
+      where: { code: categoryCode },
       select: {
         id: true,
+        code: true,
+        name: true,
+        isMain: true,
         attributeDefinitions: {
           where: { isActive: true },
-          select: { key: true, inputType: true, isActive: true },
+          orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+          select: {
+            key: true,
+            label: true,
+            inputType: true,
+            required: true,
+            isActive: true,
+            options: {
+              where: { isActive: true },
+              orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+              select: { value: true, label: true },
+            },
+          },
         },
       },
     });
 
-    if (!serverCategory) {
+    if (!productCategory) {
       return NextResponse.json(
-        { error: "Không tìm thấy danh mục SERVER trong hệ thống." },
+        { error: `Không tìm thấy danh mục ${categoryCode} trong hệ thống.` },
         { status: 400 },
       );
     }
@@ -91,7 +136,7 @@ export async function POST(request: Request) {
             ? { Authorization: `Bearer ${process.env.HERMES_API_TOKEN}` }
             : {}),
         },
-        body: JSON.stringify(buildPayload(body)),
+        body: JSON.stringify(buildPayload(body, productCategory)),
         signal: controller.signal,
       });
 
@@ -122,7 +167,7 @@ export async function POST(request: Request) {
 
     const { suggestion, ignoredFields } = normalizeHermesServerSpecResponse(
       hermesPayload,
-      serverCategory.attributeDefinitions,
+      productCategory.attributeDefinitions,
     );
 
     const hasSuggestion =

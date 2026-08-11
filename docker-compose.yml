@@ -36,6 +36,8 @@ services:
   # Next.js Application
   # -------------------------------------------------
   warehouse-app:
+    image: ${APP_IMAGE:-step-it-warehouse:local}
+
     build:
       context: .
       dockerfile: Dockerfile
@@ -57,11 +59,21 @@ services:
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
 
       ADMIN_EMAIL: ${ADMIN_EMAIL}
 
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+
+      CRON_SECRET: ${CRON_SECRET:-}
+
+      HERMES_API_URL: ${HERMES_API_URL:-}
+      HERMES_API_TOKEN: ${HERMES_API_TOKEN:-}
+      HERMES_TIMEOUT_MS: ${HERMES_TIMEOUT_MS:-8000}
+
+      # Migration duoc chay trong buoc deploy co backup, khong chay khi restart app.
+      RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-false}
 
       TZ: Asia/Ho_Chi_Minh
 
@@ -70,7 +82,7 @@ services:
       - private
 
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/auth/session',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -19,6 +19,10 @@
 
 # production
 /build
+/.deploy/
+/backups/
+/backup_db/*.sql
+/backup_db/*.sql.gz
 
 # misc
 .DS_Store

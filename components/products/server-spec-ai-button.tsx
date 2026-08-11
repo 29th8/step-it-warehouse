@@ -89,7 +89,7 @@ export function ServerSpecAiButton({
   const [response, setResponse] = useState<SuggestionResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const isServer = formData.category === "SERVER";
+  const hasCategory = Boolean(formData.category);
 
   const suggestionItems = useMemo<SuggestionItem[]>(() => {
     if (!response?.suggestions) return [];
@@ -128,7 +128,7 @@ export function ServerSpecAiButton({
     return items;
   }, [attributeDefinitions, response]);
 
-  if (!isServer) return null;
+  if (!hasCategory) return null;
 
   const fetchSuggestion = async () => {
     if (!formData.name.trim() && !formData.modelNumber.trim()) {
@@ -145,6 +145,7 @@ export function ServerSpecAiButton({
           name: formData.name,
           modelNumber: formData.modelNumber,
           vendor: formData.vendor,
+          type: formData.type,
           category: formData.category,
         }),
       });
@@ -195,7 +196,7 @@ export function ServerSpecAiButton({
           className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
         >
           {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-          AI điền thông tin
+          AI tư vấn thông tin
         </Button>
       </div>
 

@@ -1,10 +1,14 @@
 #!/bin/sh
 set -e
 
-echo "========================================="
-echo "  [ENTRYPOINT] Running Prisma Migrations..."
-echo "========================================="
-npx prisma migrate deploy
+if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
+  echo "========================================="
+  echo "  [ENTRYPOINT] Running Prisma Migrations..."
+  echo "========================================="
+  npx prisma migrate deploy
+else
+  echo "[ENTRYPOINT] Prisma migration is managed by the deploy pipeline."
+fi
 
 echo "========================================="
 echo "  [ENTRYPOINT] Starting Next.js Server..."

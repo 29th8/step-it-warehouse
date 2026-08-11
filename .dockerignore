@@ -10,3 +10,5 @@ Dockerfile
 .dockerignore
 logs
 backups
+backup_db
+.deploy
