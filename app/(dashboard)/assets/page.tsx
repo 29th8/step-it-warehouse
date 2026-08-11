@@ -130,7 +130,7 @@ export default function AssetListPage() {
       category: "MEMORY",
       attributeKey: "speed",
     });
-    const res = await fetch(`/api/assets?${params.toString()}`);
+    const res = await fetch(`/api/assets?${params.toString()}`, { cache: "no-store" });
     const json: AttributeValuesResponse = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(getApiError(json, "Không thể tải danh sách tốc độ RAM"));
     setRamSpeedOptions(Array.isArray(json.data) ? json.data : []);

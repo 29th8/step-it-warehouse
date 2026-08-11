@@ -56,7 +56,6 @@ export async function GET(req: Request) {
           productCategory: {
             OR: [{ id: category }, { code: category.toUpperCase() }],
           },
-          assets: { some: { deletedAt: null } },
         },
         select: { attributes: true },
       });

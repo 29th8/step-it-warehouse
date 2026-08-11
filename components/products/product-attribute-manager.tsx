@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Settings2, Plus, Trash2, X, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings2, Plus, Trash2, X, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,8 @@ export function ProductAttributeManager({ categories, onRefresh }: ProductAttrib
   });
   const [newOptionValues, setNewOptionValues] = useState<Record<string, string>>({});
   const [draggedDefinitionId, setDraggedDefinitionId] = useState<string | null>(null);
+  const [draggedOption, setDraggedOption] = useState<{ definitionId: string; optionId: string } | null>(null);
+  const [reorderingOptionDefinitionId, setReorderingOptionDefinitionId] = useState<string | null>(null);
 
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId);
   const categoryDefinitions = useMemo(
@@ -172,11 +174,16 @@ export function ProductAttributeManager({ categories, onRefresh }: ProductAttrib
     const value = (newOptionValues[definitionId] || "").trim();
     if (!value) return;
 
+    const definition = definitions.find((item) => item.id === definitionId);
+    const nextSortOrder = definition && definition.options.length > 0
+      ? Math.max(...definition.options.map((option) => option.sortOrder || 0)) + 10
+      : 10;
+
     try {
       const res = await fetch("/api/product-attribute-options", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ definitionId, value, label: value }),
+        body: JSON.stringify({ definitionId, value, label: value, sortOrder: nextSortOrder }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Không thể thêm option");
@@ -187,6 +194,79 @@ export function ProductAttributeManager({ categories, onRefresh }: ProductAttrib
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể thêm option");
     }
+  };
+
+  const persistOptionOrder = async (
+    definition: ProductAttributeDefinition,
+    orderedOptions: ProductAttributeDefinition["options"]
+  ) => {
+    const normalizedOptions = orderedOptions.map((option, index) => ({
+      ...option,
+      sortOrder: (index + 1) * 10,
+    }));
+
+    setDefinitions((prev) => prev.map((item) =>
+      item.id === definition.id ? { ...item, options: normalizedOptions } : item
+    ));
+    setReorderingOptionDefinitionId(definition.id);
+
+    try {
+      const res = await fetch("/api/product-attribute-options", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          definitionId: definition.id,
+          orderedOptionIds: normalizedOptions.map((option) => option.id),
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "Không thể cập nhật thứ tự giá trị");
+
+      toast.success("Đã cập nhật thứ tự giá trị");
+      onRefresh?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật thứ tự giá trị");
+      fetchDefinitions();
+    } finally {
+      setReorderingOptionDefinitionId(null);
+    }
+  };
+
+  const reorderOption = async (definitionId: string, targetOptionId: string) => {
+    if (
+      !draggedOption
+      || draggedOption.definitionId !== definitionId
+      || draggedOption.optionId === targetOptionId
+      || reorderingOptionDefinitionId === definitionId
+    ) return;
+
+    const definition = definitions.find((item) => item.id === definitionId);
+    if (!definition) return;
+
+    const fromIndex = definition.options.findIndex((option) => option.id === draggedOption.optionId);
+    const toIndex = definition.options.findIndex((option) => option.id === targetOptionId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextOptions = [...definition.options];
+    const [moved] = nextOptions.splice(fromIndex, 1);
+    nextOptions.splice(toIndex, 0, moved);
+    setDraggedOption(null);
+    await persistOptionOrder(definition, nextOptions);
+  };
+
+  const moveOption = async (definitionId: string, optionId: string, direction: -1 | 1) => {
+    if (reorderingOptionDefinitionId === definitionId) return;
+
+    const definition = definitions.find((item) => item.id === definitionId);
+    if (!definition) return;
+
+    const currentIndex = definition.options.findIndex((option) => option.id === optionId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= definition.options.length) return;
+
+    const nextOptions = [...definition.options];
+    [nextOptions[currentIndex], nextOptions[targetIndex]] = [nextOptions[targetIndex], nextOptions[currentIndex]];
+    await persistOptionOrder(definition, nextOptions);
   };
 
   const updateOption = async (optionId: string, patch: Record<string, unknown>) => {
@@ -366,10 +446,36 @@ export function ProductAttributeManager({ categories, onRefresh }: ProductAttrib
                           </Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {definition.options.map((option) => (
-                            <div key={option.id} className="flex items-center gap-1 rounded-md border bg-slate-50 px-2 py-1">
+                          {definition.options.map((option, optionIndex) => (
+                            <div
+                              key={option.id}
+                              className={`flex items-center gap-1 rounded-md border px-1 py-1 transition-colors ${draggedOption?.optionId === option.id ? "border-blue-300 bg-blue-50" : "bg-slate-50"}`}
+                              onDragOver={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                reorderOption(definition.id, option.id);
+                              }}
+                            >
+                              <button
+                                type="button"
+                                draggable={reorderingOptionDefinitionId !== definition.id}
+                                onDragStart={(event) => {
+                                  event.stopPropagation();
+                                  setDraggedOption({ definitionId: definition.id, optionId: option.id });
+                                }}
+                                onDragEnd={() => setDraggedOption(null)}
+                                className="flex h-9 w-8 cursor-grab items-center justify-center rounded text-slate-400 hover:bg-white hover:text-slate-700 active:cursor-grabbing"
+                                title="Kéo để đổi vị trí giá trị"
+                                aria-label={`Kéo để đổi vị trí ${option.label || option.value}`}
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </button>
                               <Input
-                                className="h-9 w-32 bg-white"
+                                className="h-9 w-24 bg-white sm:w-32"
                                 defaultValue={option.label || option.value}
                                 onBlur={(e) => {
                                   const nextValue = e.target.value.trim();
@@ -378,6 +484,30 @@ export function ProductAttributeManager({ categories, onRefresh }: ProductAttrib
                                   }
                                 }}
                               />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-8 text-slate-500"
+                                disabled={optionIndex === 0 || reorderingOptionDefinitionId === definition.id}
+                                onClick={() => moveOption(definition.id, option.id, -1)}
+                                title="Chuyển sang trái"
+                                aria-label={`Chuyển ${option.label || option.value} sang trái`}
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-8 text-slate-500"
+                                disabled={optionIndex === definition.options.length - 1 || reorderingOptionDefinitionId === definition.id}
+                                onClick={() => moveOption(definition.id, option.id, 1)}
+                                title="Chuyển sang phải"
+                                aria-label={`Chuyển ${option.label || option.value} sang phải`}
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </Button>
                               <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-red-600" onClick={() => deleteOption(option.id)}>
                                 <X className="w-3.5 h-3.5" />
                               </Button>
