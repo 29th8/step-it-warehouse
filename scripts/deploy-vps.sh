@@ -118,4 +118,8 @@ fi
 printf '%s\n' "$DEPLOY_IMAGE" > "$STATE_DIR/current-image"
 rm -f "$STATE_DIR/pending-image"
 
+if [ -f "$PROJECT_DIR/scripts/cleanup-docker-vps.sh" ]; then
+  bash "$PROJECT_DIR/scripts/cleanup-docker-vps.sh" "$PROJECT_DIR"
+fi
+
 echo "Deployment completed successfully: $DEPLOY_IMAGE"

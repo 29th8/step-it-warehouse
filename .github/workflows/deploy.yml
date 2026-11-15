@@ -113,6 +113,48 @@ jobs:
           printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
+      - name: Reclaim VPS Docker space before pulling image
+        env:
+          VPS_APP_PATH: ${{ secrets.VPS_APP_PATH }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        shell: bash
+        run: |
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" bash -s -- "$VPS_APP_PATH" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          APP_PATH=$1
+          IMAGE_REPOSITORY=ghcr.io/29th8/step-it-warehouse
+          CURRENT_IMAGE=$(cat "$APP_PATH/.deploy/current-image" 2>/dev/null || true)
+          PREVIOUS_IMAGE=$(cat "$APP_PATH/.deploy/previous-image" 2>/dev/null || true)
+          RUNNING_IMAGE=$(docker inspect --format '{{.Config.Image}}' warehouse-app 2>/dev/null || true)
+
+          echo "Cleaning old Docker build cache before deployment ..."
+          docker builder prune --force --filter until=168h >/dev/null
+
+          available_kb=$(df -Pk "$APP_PATH" | awk 'NR == 2 { print $4 }')
+          if [ "${available_kb:-0}" -lt 6291456 ]; then
+            echo "Disk space is low; removing all unused Docker build cache ..."
+            docker builder prune --all --force >/dev/null
+          fi
+
+          while IFS= read -r image; do
+            [ -n "$image" ] || continue
+            if [ "$image" != "$CURRENT_IMAGE" ] && [ "$image" != "$PREVIOUS_IMAGE" ] && [ "$image" != "$RUNNING_IMAGE" ]; then
+              docker image rm "$image" >/dev/null 2>&1 || true
+            fi
+          done < <(docker image ls "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}}')
+
+          docker image prune --force >/dev/null
+          available_kb=$(df -Pk "$APP_PATH" | awk 'NR == 2 { print $4 }')
+          if [ "${available_kb:-0}" -lt 4194304 ]; then
+            echo "Not enough VPS disk space to continue deployment: ${available_kb} KB available." >&2
+            exit 20
+          fi
+          echo "VPS Docker cleanup completed: ${available_kb} KB available."
+          REMOTE_SCRIPT
+
       - name: Authorize VPS to pull the private image
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
