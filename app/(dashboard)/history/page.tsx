@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -23,6 +23,7 @@ import { History, Search, Filter, RefreshCw, Box, RotateCcw, Trash2 } from "luci
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { Spinner } from "@/components/common/spinner";
+import { useDebounce } from "@/lib/hooks/useDebounce";
 
 type HistoryUser = {
   id?: string;
@@ -55,6 +56,34 @@ type UsersResponse = {
   users?: HistoryUser[];
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  IN_STOCK: "Trong kho",
+  RESERVED: "Đã giữ",
+  DEPLOYED: "Đang sử dụng",
+  HANDED_OVER: "Đã bàn giao",
+  MAINTENANCE: "Đang bảo trì",
+  FAULTY: "Lỗi / Hỏng",
+  DISPOSED: "Thanh lý",
+  RENTED: "Đang cho thuê",
+  INSTALLED: "Đã lắp ráp",
+};
+
+function formatHistoryNote(note?: string | null) {
+  if (!note) return "Không có nội dung chi tiết.";
+
+  const location = note.match(/^(Cập nhật vị trí: [\s\S]*?)(\. Trạng thái: )([A-Z_]+)(\. Ghi chú: )([\s\S]*)$/);
+  if (location && STATUS_LABELS[location[3]]) {
+    return `${location[1]}\nTrạng thái: ${STATUS_LABELS[location[3]]}\nGhi chú: ${location[5]}`;
+  }
+
+  const scan = note.match(/^(Cập nhật trạng thái qua Mobile Scan: )([A-Z_]+)(\.[\s\S]*)$/);
+  if (scan && STATUS_LABELS[scan[2]]) {
+    return `Cập nhật trạng thái qua quét mã: ${STATUS_LABELS[scan[2]]}${scan[3]}`;
+  }
+
+  return note;
+}
+
 export default function HistoryPage() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "ADMIN";
@@ -84,6 +113,8 @@ export default function HistoryPage() {
     UPDATE_RENTAL: "Cập nhật hợp đồng thuê",
     RETURN_RENTAL: "Trả hợp đồng thuê",
     DELETE_RENTAL: "Xóa hợp đồng thuê",
+    HANDOVER: "Bàn giao",
+    HANDOVER_RETURN: "Hoàn trả bàn giao",
     DELETE: "Xóa thiết bị",
     RESTORE: "Khôi phục thiết bị",
     HARD_DELETE: "Xóa thiết bị vĩnh viễn"
@@ -95,6 +126,7 @@ export default function HistoryPage() {
 
   // States cho Bộ lọc
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 500);
   const [entityType, setEntityType] = useState("ALL");
   const [timeRange, setTimeRange] = useState("ALL");
   const [executorId, setExecutorId] = useState("ALL");
@@ -103,8 +135,10 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const limit = 20;
+  const latestRequest = useRef(0);
 
   const fetchMovements = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
@@ -113,11 +147,12 @@ export default function HistoryPage() {
         entityType,
         timeRange,
         userId: executorId,
-        search: searchQuery
+        search: debouncedSearch
       });
 
       const res = await fetch(`/api/system-history?${query.toString()}`);
       const json: HistoryResponse = await res.json();
+      if (requestId !== latestRequest.current) return;
       if (res.ok && json.data) {
         setMovements(json.data);
         setTotalPages(json.totalPages || 1);
@@ -126,13 +161,14 @@ export default function HistoryPage() {
         setTotalPages(1);
       }
     } catch (error) {
+      if (requestId !== latestRequest.current) return;
       console.error("Lỗi fetch movements:", error);
       setMovements([]);
       setTotalPages(1);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [entityType, executorId, page, searchQuery, timeRange]);
+  }, [entityType, executorId, page, debouncedSearch, timeRange]);
 
   const handleRestore = async (assetId: string) => {
     if (!assetId) return;
@@ -184,15 +220,6 @@ export default function HistoryPage() {
         }
       });
   }, []);
-
-  // Delay trigger auto search khi nhập ô Text Box
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      setPage(1);
-      fetchMovements();
-    }, 500);
-    return () => clearTimeout(delayDebounceFn);
-  }, [fetchMovements, searchQuery]);
 
   // Helper: Trả về màu Badge tương ứng với từng loại thao tác
   const getTypeBadge = (type: string) => {
@@ -260,7 +287,7 @@ export default function HistoryPage() {
             <Input
               placeholder="Tìm theo Serial Number hoặc nội dung..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="pl-10 h-11 w-full bg-white border-slate-200 rounded-xl shadow-sm focus-visible:ring-1 focus-visible:ring-slate-400 transition-all hover:border-slate-300"
             />
           </div>
@@ -381,7 +408,7 @@ export default function HistoryPage() {
                         <p className="text-xs text-slate-500">Vai trò: {move.targetUser.role}</p>
                       </div>
                     ) : null}
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{move.note}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{formatHistoryNote(move.note)}</p>
                   </div>
 
                   {move.type === "DELETE" && move.asset && move.assetId && (
@@ -501,8 +528,8 @@ export default function HistoryPage() {
 
                   {/* NỘI DUNG CHI TIẾT */}
                   <TableCell>
-                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                      {move.note}
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap break-words">
+                      {formatHistoryNote(move.note)}
                     </p>
                   </TableCell>
 

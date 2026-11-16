@@ -470,7 +470,7 @@ export async function POST(req: Request) {
       await tx.stockMovement.create({
         data: {
           type: "IMPORT",
-          note: `Nhập mới thiết bị: ${cleanSN}. Cỡ: ${createData.uHeight}U.`,
+          note: `Nhập mới thiết bị: ${cleanSN}.${selectedProductIsMain ? ` Chiều cao: ${createData.uHeight}U.` : ""}`,
           asset: { connect: { id: asset.id } },
           user: { connect: { id: userId } }
         },

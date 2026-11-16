@@ -210,7 +210,7 @@ export async function POST(req: Request) {
           await tx.stockMovement.create({
             data: {
               type: "TRANSFER",
-              note: `Cập nhật vị trí slot trong ${parentAsset.serialNumber}: ${component.serialNumber} -> ${assignment.slotName}.`,
+              note: `Đổi vị trí linh kiện trong thiết bị ${parentAsset.serialNumber}: ${component.installSlotName || "Chưa xác định"} → ${assignment.slotName}.`,
               assetId: component.id,
               userId,
             },

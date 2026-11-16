@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         data: {
           assetId: id,
           type: "DISASSEMBLE",
-          note: `Tháo rời từ thiết bị cha: ${parentId}`,
+          note: `Tháo linh kiện khỏi thiết bị cha (SN: ${parentAsset.serialNumber}).`,
           userId: currentUser.id
         }
       });

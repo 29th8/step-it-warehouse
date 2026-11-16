@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -61,6 +62,10 @@ export default function LoginPage() {
               Đăng nhập
             </Button>
           </form>
+          <p className="mt-3 text-right text-sm"><Link href="/forgot-password" className="font-medium text-blue-700 hover:underline">Quên mật khẩu?</Link></p>
+          <p className="mt-4 text-center text-sm text-slate-600">
+            Chưa có tài khoản? <Link href="/register" className="font-medium text-blue-700 hover:underline">Đăng ký</Link>
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { getManualStatusChangeError } from "@/lib/asset-status-rules";
+import { getManualStatusChangeError, statusLabel } from "@/lib/asset-status-rules";
 
 const allowedTransitions: Record<string, string[]> = {
   IN_STOCK: ["RESERVED", "DEPLOYED", "INSTALLED", "RENTED", "FAULTY", "MAINTENANCE", "DISPOSED"],
@@ -77,7 +77,7 @@ export async function PATCH(
       data: {
         assetId: id,
         type: "TRANSFER",
-        note: `Cập nhật trạng thái qua Mobile Scan: ${status}. ${note || ""}`,
+        note: `Đổi trạng thái qua quét mã: ${statusLabel(existingAsset.status)} → ${statusLabel(status)}.${note ? " Có ghi chú kèm theo." : ""}`,
         userId: currentUser.id,
       }
     });

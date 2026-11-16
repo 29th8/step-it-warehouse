@@ -112,6 +112,9 @@ export async function PATCH(req: Request, props: Props) {
     // Normalization: standardize type value
     const normalizedType = data.type ? data.type.toUpperCase() : null;
 
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Không tìm thấy sản phẩm" }, { status: 404 });
+
     const updated = await prisma.product.update({
       where: { id },
       data: {
@@ -130,7 +133,15 @@ export async function PATCH(req: Request, props: Props) {
       await prisma.stockMovement.create({
         data: {
           type: "UPDATE_PRODUCT",
-          note: `Cập nhật sản phẩm: ${updated.name}`,
+          note: `Cập nhật sản phẩm ${updated.name}: ${[
+            existing.name !== updated.name && "tên",
+            existing.modelNumber !== updated.modelNumber && "mã sản phẩm",
+            existing.categoryId !== updated.categoryId && "danh mục",
+            existing.type !== updated.type && "loại",
+            existing.vendor !== updated.vendor && "nhà sản xuất",
+            existing.description !== updated.description && "mô tả",
+            JSON.stringify(existing.attributes) !== JSON.stringify(updated.attributes) && "thuộc tính",
+          ].filter(Boolean).join(", ") || "không có thay đổi"}.`,
           userId: session.user.id,
         }
       });

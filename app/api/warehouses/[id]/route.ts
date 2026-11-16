@@ -14,6 +14,9 @@ export async function PATCH(req: Request, props: Props) {
       return NextResponse.json({ error: "Tên kho là bắt buộc" }, { status: 400 });
     }
 
+    const existing = await prisma.warehouse.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Không tìm thấy kho" }, { status: 404 });
+
     const updated = await prisma.warehouse.update({
       where: { id },
       data: {
@@ -27,7 +30,10 @@ export async function PATCH(req: Request, props: Props) {
       await prisma.stockMovement.create({
         data: {
           type: "UPDATE_WAREHOUSE",
-          note: `Cập nhật kho: ${updated.name}`,
+          note: `Cập nhật kho ${updated.name}: ${[
+            existing.name !== updated.name && `tên ${existing.name} → ${updated.name}`,
+            existing.location !== updated.location && "địa điểm",
+          ].filter(Boolean).join(", ") || "không có thay đổi"}.`,
           userId: session.user.id,
         }
       });

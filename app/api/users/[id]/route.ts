@@ -51,6 +51,12 @@ export async function PATCH(
                 },
             });
 
+            const changes = [
+                existingUser.name !== user.name && "họ tên",
+                existingUser.role !== user.role && `vai trò ${existingUser.role} → ${user.role}`,
+            ].filter(Boolean);
+            if (changes.length > 0) actionNote += `. Thay đổi: ${changes.join(", ")}`;
+
             await tx.stockMovement.create({
                 data: {
                     type: actionType,

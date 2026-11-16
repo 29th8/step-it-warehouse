@@ -41,7 +41,7 @@ export async function POST(req: Request, props: Props) {
         await tx.stockMovement.create({
           data: {
             type: "HANDOVER_RETURN",
-            note: `Hoàn trả vật tư từ biên bản ${handover.code}. ${note || ""}`.trim(),
+            note: `Hoàn trả vật tư từ biên bản ${handover.code}.${note ? " Có ghi chú kèm theo." : ""}`,
             assetId: item.assetId,
             userId: currentUser.id
           }

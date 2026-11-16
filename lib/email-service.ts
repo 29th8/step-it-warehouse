@@ -11,6 +11,28 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+export async function sendRegistrationCode(to: string, code: string): Promise<void> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_HOST) {
+    throw new Error("SMTP is not configured");
+  }
+  await transporter.sendMail({
+    from: `"Step IT Warehouse" <${process.env.SMTP_USER}>`,
+    to,
+    subject: "Mã xác thực đăng ký Step IT Warehouse",
+    text: `Mã xác thực của bạn là ${code}. Mã có hiệu lực trong 10 phút. Không chia sẻ mã này.`,
+  });
+}
+
+export async function sendPasswordResetCode(to: string, code: string): Promise<void> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_HOST) throw new Error("SMTP is not configured");
+  await transporter.sendMail({
+    from: `"Step IT Warehouse" <${process.env.SMTP_USER}>`,
+    to,
+    subject: "Mã đặt lại mật khẩu Step IT Warehouse",
+    text: `Mã đặt lại mật khẩu của bạn là ${code}. Mã có hiệu lực trong 10 phút và chỉ sử dụng một lần. Không chia sẻ mã này.`,
+  });
+}
+
 export interface RentalAlertEmailParams {
   to: string;
   customerName: string;

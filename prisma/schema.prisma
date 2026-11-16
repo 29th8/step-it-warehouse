@@ -226,6 +226,7 @@ enum AssetStatus {
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
+  verifiedEmail String? @unique
   passwordHash String
   name         String
   role         Role     @default(USER)
@@ -234,6 +235,24 @@ model User {
   movements         StockMovement[] @relation("ActorUser")
   targetedMovements StockMovement[] @relation("TargetUser")
   handovers         HandoverRecord[]
+}
+
+model PasswordResetChallenge {
+  email     String   @id
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model RegistrationChallenge {
+  email        String   @id
+  name         String
+  passwordHash String
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
 }
 
 enum Role {

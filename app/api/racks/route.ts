@@ -66,6 +66,9 @@ export async function PATCH(req: Request) {
       updateData.totalUnits = totalUnits ? parseInt(totalUnits) : undefined;
     }
 
+    const existingRack = await prisma.rack.findUnique({ where: { id } });
+    if (!existingRack) return NextResponse.json({ error: "Không tìm thấy tủ rack" }, { status: 404 });
+
     const updatedRack = await prisma.rack.update({
       where: { id },
       data: updateData,
@@ -76,7 +79,11 @@ export async function PATCH(req: Request) {
       await prisma.stockMovement.create({
         data: {
           type: "UPDATE_RACK",
-          note: `Cập nhật Rack: ${updatedRack.name}`,
+          note: `Cập nhật tủ ${updatedRack.name}: ${[
+            existingRack.name !== updatedRack.name && `tên ${existingRack.name} → ${updatedRack.name}`,
+            existingRack.type !== updatedRack.type && "loại tủ",
+            existingRack.totalUnits !== updatedRack.totalUnits && `số U ${existingRack.totalUnits ?? "không có"} → ${updatedRack.totalUnits ?? "không có"}`,
+          ].filter(Boolean).join(", ") || "không có thay đổi"}.`,
           userId: session.user.id,
         }
       });

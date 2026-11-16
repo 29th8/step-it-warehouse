@@ -9,5 +9,5 @@ export default function proxy(request: NextRequest) {
 
 export const config = {
   // Health check phai truy cap duoc truoc khi nguoi dung dang nhap.
-  matcher: ["/((?!login|api/auth|api/health).*)"],
+  matcher: ["/((?!login|register|forgot-password|api/auth|api/health).*)"],
 };

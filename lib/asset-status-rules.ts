@@ -23,7 +23,7 @@ type ManualStatusAsset = {
   } | null;
 };
 
-function statusLabel(status?: string | null) {
+export function statusLabel(status?: string | null) {
   if (!status) return "Không xác định";
   return STATUS_LABELS[status] || status;
 }
@@ -42,6 +42,9 @@ export function getManualStatusChangeError(asset: ManualStatusAsset, nextStatus?
   }
 
   const isComponent = asset.product?.productCategory?.isMain === false;
+  const isLooseRentalReturn = isComponent && asset.status === "RENTED" && nextStatus === "IN_STOCK" && !asset.parentId;
+  if (isLooseRentalReturn) return null;
+
   if (isComponent && LOCKED_COMPONENT_STATUSES.has(asset.status || "")) {
     return `Linh kiện${serialText} đang ở trạng thái ${statusLabel(asset.status)}, không nằm trong kho nên không thể đổi trạng thái thủ công.`;
   }

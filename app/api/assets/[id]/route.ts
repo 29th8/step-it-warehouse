@@ -420,18 +420,6 @@ export async function PATCH(req: Request, props: Props) {
     }
     // ------------------------------------------------------------------------
 
-    // C. TẠO NOTE GHI CHÚ
-    const warehouse = await prisma.warehouse.findUnique({ where: { id: data.warehouseId } });
-    let rackName = "Không lên tủ";
-    if (normalizedRackId) {
-      const rack = await prisma.rack.findUnique({ where: { id: normalizedRackId } });
-      if (rack) rackName = rack.name;
-    }
-
-    const uText = ` (Cỡ: ${targetUHeight}U)`;
-    const rackUnitText = targetProductIsMain && submittedRackUnit ? ` - Vị trí U: ${submittedRackUnit}${uText}` : "";
-    const locationNote = `Cập nhật vị trí: ${warehouse?.name || "N/A"} - Tủ: ${rackName}${rackUnitText}. Trạng thái: ${data.status}. Ghi chú: ${data.notes || "Không"}`;
-
     // D. CHUẨN BỊ DATA UPDATE
     const updateData: any = {
       serialNumber: data.serialNumber,
@@ -488,10 +476,35 @@ export async function PATCH(req: Request, props: Props) {
         },
       });
 
-      let finalNote = locationNote;
-      if (count > 0) {
-        finalNote += " Các linh kiện đi theo thiết bị.";
+      const statusLabels: Record<string, string> = {
+        IN_STOCK: "Trong kho", RESERVED: "Đã giữ", DEPLOYED: "Đang sử dụng",
+        HANDED_OVER: "Đã bàn giao", MAINTENANCE: "Đang bảo trì", FAULTY: "Lỗi / Hỏng",
+        DISPOSED: "Thanh lý", RENTED: "Đang cho thuê", INSTALLED: "Đã lắp ráp",
+      };
+      const changes: string[] = [];
+      if (asset.status !== existingAsset.status) {
+        changes.push(`Trạng thái: ${statusLabels[existingAsset.status] || existingAsset.status} → ${statusLabels[asset.status] || asset.status}`);
       }
+      if (asset.warehouseId !== existingAsset.warehouseId || asset.rackId !== existingAsset.rackId || asset.rackUnit !== existingAsset.rackUnit) {
+        const [oldWarehouse, warehouse, oldRack, rack] = await Promise.all([
+          tx.warehouse.findUnique({ where: { id: existingAsset.warehouseId }, select: { name: true } }),
+          tx.warehouse.findUnique({ where: { id: asset.warehouseId }, select: { name: true } }),
+          existingAsset.rackId ? tx.rack.findUnique({ where: { id: existingAsset.rackId }, select: { name: true } }) : null,
+          asset.rackId ? tx.rack.findUnique({ where: { id: asset.rackId }, select: { name: true } }) : null,
+        ]);
+        const oldLocation = `${oldWarehouse?.name || "Không xác định"} - ${oldRack?.name || "Không lên tủ"}${existingAsset.rackUnit ? ` - U${existingAsset.rackUnit}` : ""}`;
+        const newLocation = `${warehouse?.name || "Không xác định"} - ${rack?.name || "Không lên tủ"}${asset.rackUnit ? ` - U${asset.rackUnit}` : ""}`;
+        changes.push(`Vị trí: ${oldLocation} → ${newLocation}`);
+        if (count > 0) changes.push("Các linh kiện đi theo vị trí thiết bị.");
+      }
+      if (asset.serialNumber !== existingAsset.serialNumber) changes.push(`Số serial: ${existingAsset.serialNumber} → ${asset.serialNumber}`);
+      if (asset.productId !== existingAsset.productId) changes.push(`Sản phẩm: ${existingAsset.product.name} → ${targetProduct.name}`);
+      if (asset.owner !== existingAsset.owner) changes.push(`Chủ sở hữu: ${existingAsset.owner || "Không có"} → ${asset.owner || "Không có"}`);
+      if (asset.parentId !== existingAsset.parentId) changes.push("Đã thay đổi thiết bị cha.");
+      if (asset.installSlotType !== existingAsset.installSlotType || asset.installSlotName !== existingAsset.installSlotName) changes.push(`Vị trí linh kiện: ${existingAsset.installSlotName || "Không có"} → ${asset.installSlotName || "Không có"}`);
+      if (asset.uHeight !== existingAsset.uHeight) changes.push(`Chiều cao: ${existingAsset.uHeight}U → ${asset.uHeight}U`);
+      if ((asset.notes || "") !== (existingAsset.notes || "")) changes.push("Đã cập nhật ghi chú.");
+      const finalNote = changes.length ? changes.join("\n") : "Lưu thông tin thiết bị (không có thay đổi).";
 
       await tx.stockMovement.create({
         data: {
