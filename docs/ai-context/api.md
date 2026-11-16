@@ -26,7 +26,7 @@ Danh sách dưới đây dựa trên export handler trong `app/api`; quyền và
 | `/assets/recycle-bin`, `/assets/import-template`, `/assets/export/report` | GET |
 | `/assets/import`, `/assets/assemble`, `/assets/disassemble`, `/assets/move-component`, `/assembly` | POST |
 | `/warehouses` | GET, POST |
-| `/warehouses/[id]` | PATCH, DELETE |
+| `/warehouses/[id]` | GET, PATCH, DELETE |
 | `/racks` | GET, POST, PATCH, DELETE |
 | `/racks/[id]` | GET |
 | `/rentals` | GET, POST |

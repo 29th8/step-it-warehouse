@@ -50,7 +50,7 @@ export function Header() {
 
         {/* 2. MENU TÀI KHOẢN (USER DROPDOWN) */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          <DropdownMenuTrigger asChild id="account-menu-trigger">
             <button className="flex items-center gap-3 p-1 pr-2 rounded-full hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all focus:outline-none">
 
               <div className="text-right hidden sm:block">
@@ -64,7 +64,7 @@ export function Header() {
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent className="w-56 bg-white z-50 mt-2 rounded-xl shadow-lg border-slate-200 p-1" align="end" forceMount>
+          <DropdownMenuContent aria-labelledby="account-menu-trigger" className="w-56 bg-white z-50 mt-2 rounded-xl shadow-lg border-slate-200 p-1" align="end" forceMount>
 
             <DropdownMenuLabel className="font-normal px-2 py-3">
               <div className="flex flex-col space-y-1">

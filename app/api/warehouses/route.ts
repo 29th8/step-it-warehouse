@@ -11,13 +11,13 @@ export async function GET() {
         // BAO GỒM TOÀN BỘ DANH SÁCH RACK
         racks: {
           include: {
-            _count: { select: { assets: true } } // Đếm số asset trong từng rack
+            _count: { select: { assets: { where: { deletedAt: null, parentId: null } } } }
           },
           orderBy: { name: "asc" }
         },
         // ĐỒNG THỜI ĐẾM TỔNG SỐ LƯỢNG
         _count: {
-          select: { assets: true, racks: true }
+          select: { assets: { where: { deletedAt: null } }, racks: true }
         }
       },
       orderBy: { name: 'asc' }

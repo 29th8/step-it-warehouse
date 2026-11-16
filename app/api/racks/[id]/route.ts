@@ -28,10 +28,11 @@ export async function GET(req: Request, props: Props) {
             include: {
                 warehouse: true,
                 assets: {
-                    where: { parentId: null }, // chỉ lấy thiết bị nguyên chiếc
+                    where: { parentId: null, deletedAt: null }, // chỉ lấy thiết bị chưa xóa
                     include: {
                         product: { include: { productCategory: true } },
                         components: {  // linh kiện gắn trong
+                            where: { deletedAt: null },
                             include: { product: { include: { productCategory: true } } }
                         }
                     }

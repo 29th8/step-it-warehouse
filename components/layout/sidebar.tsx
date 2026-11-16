@@ -43,16 +43,15 @@ export function Sidebar() {
           { label: "Dashboard", href: "/", icon: LayoutDashboard },
           { label: "Sản phẩm", href: "/products", icon: Package },
           { label: "Thiết bị", href: "/assets", icon: Server },
-          { label: "Vị trí", href: "/warehouses", icon: MapPin },
+          { label: "Kho & tủ rack", href: "/warehouses", icon: MapPin },
           // { label: "Hợp đồng", href: "/rentals", icon: FileText }, // Ẩn - không dùng tính năng cho thuê
           { label: "Bàn giao", href: "/handovers", icon: ClipboardList },
-          { label: "Tủ Rack", href: "/racks", icon: Server },
           { label: "Lịch sử hệ thống", href: "/history", icon: History },
           ...(isAdmin ? [{ label: "Tài khoản", href: "/users", icon: Users }] : []),
         ].map((item) => (
           <Link key={item.href} href={item.href} className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all",
-            pathname === item.href ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"
+            (pathname === item.href || (item.href === "/warehouses" && (pathname.startsWith("/warehouses/") || pathname.startsWith("/racks/")))) ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"
           )}>
             <item.icon size={20} className="shrink-0" />
             <span className={cn("transition-opacity duration-300", isCollapsed ? "opacity-0 w-0" : "opacity-100")}>

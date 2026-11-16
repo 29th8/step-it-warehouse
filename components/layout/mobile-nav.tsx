@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   ClipboardList,
-  Grid3x3,
   History,
   LayoutDashboard,
   MapPin,
@@ -31,11 +30,10 @@ const primaryItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Thiết bị", href: "/assets", icon: Server },
   { label: "Sản phẩm", href: "/products", icon: Package },
-  { label: "Rack", href: "/racks", icon: Grid3x3 },
+  { label: "Kho", href: "/warehouses", icon: MapPin },
 ];
 
 const secondaryItems = [
-  { label: "Vị trí", href: "/warehouses", icon: MapPin },
   { label: "Bàn giao", href: "/handovers", icon: ClipboardList },
   { label: "Lịch sử", href: "/history", icon: History },
 ];
@@ -51,6 +49,7 @@ export function MobileNav() {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    if (href === "/warehouses" && pathname.startsWith("/racks/")) return true;
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -75,13 +74,13 @@ export function MobileNav() {
           ))}
 
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-            <SheetTrigger asChild>
+            <SheetTrigger asChild aria-controls="mobile-navigation-menu">
               <button className="flex h-12 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900">
                 <Menu className="h-5 w-5" />
                 <span>Thêm</span>
               </button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="max-h-[75vh] rounded-t-2xl bg-white p-0">
+            <SheetContent id="mobile-navigation-menu" side="bottom" className="max-h-[75vh] rounded-t-2xl bg-white p-0">
               <SheetHeader className="border-b border-slate-100 bg-slate-50">
                 <SheetTitle className="flex items-center gap-2 text-slate-900">
                   <Monitor className="h-5 w-5 text-blue-600" />

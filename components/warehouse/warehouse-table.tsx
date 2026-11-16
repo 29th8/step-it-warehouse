@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Server, Grid3x3, MapPin } from "lucide-react";
 import { WarehouseActionMenu } from "../warehouse/warehouse-action-menu";
+import Link from "next/link";
 
 type WarehouseRow = {
   id: string;
@@ -32,7 +33,7 @@ export function WarehouseTable({ data, onRefresh }: WarehouseTableProps) {
               <article key={warehouse.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-900">{warehouse.name}</p>
+                    <Link href={`/warehouses/${warehouse.id}`} className="block truncate text-sm font-bold text-blue-700 hover:underline">{warehouse.name}</Link>
                     <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
                       <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                       <span className="truncate">{warehouse.location || "Chưa cập nhật vị trí"}</span>
@@ -70,7 +71,7 @@ export function WarehouseTable({ data, onRefresh }: WarehouseTableProps) {
           ) : (
             data.map((warehouse) => (
               <TableRow key={warehouse.id} className="hover:bg-slate-50/50">
-                <TableCell className="font-bold text-slate-800 text-base">{warehouse.name}</TableCell>
+                <TableCell className="font-bold text-base"><Link href={`/warehouses/${warehouse.id}`} className="text-blue-700 hover:underline">{warehouse.name}</Link></TableCell>
                 <TableCell className="text-slate-600 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
                   {warehouse.location || <span className="italic text-slate-400">Chưa cập nhật</span>}

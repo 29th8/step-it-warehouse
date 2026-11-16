@@ -27,6 +27,7 @@ Bảng là chỉ mục đường dẫn dựa trên cấu trúc và các lời g�
 - Sao chép thiết bị từ danh sách hoặc chi tiết: `components/inventory/asset-table.tsx` và `components/inventory/asset-action-menu.tsx` mở `components/inventory/create-asset-modal.tsx` với sản phẩm, kho, tủ, vị trí U và chủ sở hữu; serial, cha và ghi chú không được sao chép. Lưu vẫn gọi `POST /api/assets` và kiểm tra trùng vị trí U.
 - Trả trạng thái linh kiện rời từ `RENTED` về `IN_STOCK`: `lib/asset-status-rules.ts` cho phép khi không có hợp đồng thuê ACTIVE; hai route cập nhật asset cùng dùng helper này. Linh kiện đang gắn và các trạng thái bị khóa khác vẫn áp dụng quy tắc hiện hành.
 - Kho/rack: bắt đầu từ các trang và component trong bảng, sau đó đọc `app/api/warehouses/`, `app/api/racks/` và `lib/rack-utils.ts`.
+- Chi tiết kho tại `app/(dashboard)/warehouses/[id]/page.tsx` gọi `GET /api/warehouses/[id]`: phân loại số tài sản chưa xóa, danh sách tủ và danh sách ngoài tủ có phân trang backend; click tủ mở `/racks/[id]`. Mục Tủ Rack được ẩn khỏi điều hướng, nhưng các route `/racks` vẫn được giữ.
 - Thuê: đọc `app/(dashboard)/rentals/create/page.tsx`, `app/api/rentals/route.ts`, `app/api/rentals/return/route.ts` và service cảnh báo; bàn giao: đọc trang handovers, route tạo và `app/api/handovers/[id]/return/route.ts`.
 - Đăng nhập/quyền: đọc `app/api/auth/[...nextauth]/route.ts`, `proxy.ts` và handler cụ thể. Deploy: đọc workflow và `scripts/deploy-vps.sh`; xem [deployment.md](deployment.md).
 

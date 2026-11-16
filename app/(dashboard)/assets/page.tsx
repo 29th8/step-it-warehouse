@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Filter, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Download, Filter, MapPin, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,6 +34,8 @@ type AttributeValuesResponse = {
   data?: string[];
 };
 
+type WarehouseOption = { id: string; name: string };
+
 function parseList<T>(json: unknown): T[] {
   if (Array.isArray(json)) return json as T[];
   if (json && typeof json === "object" && "data" in json && Array.isArray((json as { data?: unknown }).data)) {
@@ -53,6 +55,7 @@ export default function AssetListPage() {
   const router = useRouter();
 
   const [categories, setCategories] = useState<ProductCategoryOption[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [attributeDefinitions, setAttributeDefinitions] = useState<ProductAttributeDefinition[]>([]);
   const [activeCategory, setActiveCategory] = useState("");
 
@@ -65,6 +68,7 @@ export default function AssetListPage() {
   const [categorySearch, setCategorySearch] = useState("");
 
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [warehouseFilter, setWarehouseFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
@@ -117,10 +121,11 @@ export default function AssetListPage() {
       searchQuery,
       ownerFilter,
       filterStatus,
+      warehouseFilter,
       attributeFilters,
       definitionIds: selectedDefinitions.map((definition) => definition.id),
     });
-  }, [activeCategory, searchQuery, ownerFilter, filterStatus, attributeFilters, selectedDefinitions]);
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, warehouseFilter, attributeFilters, selectedDefinitions]);
 
   const lastAssetFilterSignature = useRef(assetFilterSignature);
 
@@ -159,6 +164,19 @@ export default function AssetListPage() {
     loadMeta();
   }, []);
 
+  const fetchWarehouses = useCallback(async () => {
+    try {
+      const res = await fetch("/api/warehouses", { cache: "no-store" });
+      const json: unknown = await res.json();
+      if (!res.ok) throw new Error(getApiError(json, "Không thể tải danh sách kho"));
+      setWarehouses(parseList<WarehouseOption>(json));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tải danh sách kho");
+    }
+  }, []);
+
+  useEffect(() => { fetchWarehouses(); }, [fetchWarehouses]);
+
   useEffect(() => {
     if (activeCategory !== "MEMORY") return;
     fetchRamSpeedOptions().catch(() => setRamSpeedOptions([]));
@@ -173,6 +191,7 @@ export default function AssetListPage() {
     if (searchQuery) params.append("search", searchQuery);
     if (ownerFilter) params.append("owner", ownerFilter);
     if (filterStatus !== "ALL") params.append("status", filterStatus);
+    if (warehouseFilter !== "ALL") params.append("warehouseId", warehouseFilter);
 
     for (const definition of selectedDefinitions) {
       const value = attributeFilters[definition.key];
@@ -186,7 +205,7 @@ export default function AssetListPage() {
     }
 
     return params;
-  }, [activeCategory, searchQuery, ownerFilter, filterStatus, selectedDefinitions, attributeFilters]);
+  }, [activeCategory, searchQuery, ownerFilter, filterStatus, warehouseFilter, selectedDefinitions, attributeFilters]);
 
   const buildCategoryCountParams = useCallback(() => {
     const params = new URLSearchParams();
@@ -195,9 +214,10 @@ export default function AssetListPage() {
     if (searchQuery) params.append("search", searchQuery);
     if (ownerFilter) params.append("owner", ownerFilter);
     if (filterStatus !== "ALL") params.append("status", filterStatus);
+    if (warehouseFilter !== "ALL") params.append("warehouseId", warehouseFilter);
 
     return params;
-  }, [searchQuery, ownerFilter, filterStatus]);
+  }, [searchQuery, ownerFilter, filterStatus, warehouseFilter]);
 
   const fetchAssets = useCallback(async (targetPage: number) => {
     if (!activeCategory) {
@@ -265,6 +285,7 @@ export default function AssetListPage() {
   const refreshAll = () => {
     fetchAssets(page);
     fetchCategoryCounts();
+    fetchWarehouses();
     if (activeCategory === "MEMORY") {
       fetchRamSpeedOptions().catch(() => setRamSpeedOptions([]));
     }
@@ -292,6 +313,7 @@ export default function AssetListPage() {
 
   const clearAllFilters = () => {
     setFilterStatus("ALL");
+    setWarehouseFilter("ALL");
     setOwnerFilter("");
     setSearchQuery("");
     setAttributeFilters({});
@@ -402,7 +424,7 @@ export default function AssetListPage() {
                 <Button variant="outline" className="h-11 flex-1 justify-center rounded-xl bg-white shadow-sm">
                   <SlidersHorizontal className="h-4 w-4 text-blue-600" />
                   Bộ lọc
-                  {(filterStatus !== "ALL" || ownerFilter || Object.values(attributeFilters).some(Boolean)) && (
+                  {(filterStatus !== "ALL" || warehouseFilter !== "ALL" || ownerFilter || Object.values(attributeFilters).some(Boolean)) && (
                     <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">Đang lọc</span>
                   )}
                 </Button>
@@ -448,6 +470,21 @@ export default function AssetListPage() {
                         <SelectItem value="RENTED">Đang thuê</SelectItem>
                         <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>
                         <SelectItem value="DISPOSED">Thanh lý</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Kho</label>
+                    <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                      <SelectTrigger aria-label="Lọc theo kho" className="h-11 w-full bg-white">
+                        <SelectValue placeholder="Chọn kho" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="ALL">Tất cả kho</SelectItem>
+                        {warehouses.map((warehouse) => (
+                          <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -515,7 +552,21 @@ export default function AssetListPage() {
           </div>
 
           <div className="hidden md:flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                <SelectTrigger aria-label="Lọc theo kho" className="h-11 w-full sm:w-[200px] bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-medium">
+                  <div className="flex items-center gap-2 truncate">
+                    <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                    <SelectValue placeholder="Chọn kho" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
+                  <SelectItem value="ALL">Tất cả kho</SelectItem>
+                  {warehouses.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="h-11 w-full sm:w-[200px] bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-medium">
                   <div className="flex items-center gap-2 truncate">

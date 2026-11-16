@@ -5,6 +5,58 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 type Props = { params: Promise<{ id: string }> };
 
+export async function GET(req: Request, props: Props) {
+  try {
+    const { id } = await props.params;
+    const searchParams = new URL(req.url).searchParams;
+    const parsedPage = Number(searchParams.get("page") || 1);
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const pageSize = 20;
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id },
+      include: {
+        racks: {
+          orderBy: { name: "asc" },
+          include: { _count: { select: { assets: { where: { deletedAt: null, parentId: null } } } } },
+        },
+      },
+    });
+    if (!warehouse) return NextResponse.json({ error: "Không tìm thấy kho" }, { status: 404 });
+
+    const base = { warehouseId: id, deletedAt: null };
+    const outside = { ...base, rackId: null, parentId: null };
+    const [mainCount, looseCount, installedCount, outsideCount, assets] = await prisma.$transaction([
+      prisma.asset.count({ where: { ...base, parentId: null, product: { productCategory: { isMain: true } } } }),
+      prisma.asset.count({ where: { ...base, parentId: null, product: { productCategory: { isMain: false } } } }),
+      prisma.asset.count({ where: { ...base, parentId: { not: null } } }),
+      prisma.asset.count({ where: outside }),
+      prisma.asset.findMany({
+        where: outside,
+        include: { product: { include: { productCategory: true } }, warehouse: true, rack: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return NextResponse.json({
+      data: {
+        ...warehouse,
+        counts: { main: mainCount, loose: looseCount, installed: installedCount, total: mainCount + looseCount + installedCount },
+        outside: {
+          data: assets.map((asset) => ({ ...asset, product: { ...asset.product, category: asset.product.productCategory.code } })),
+          total: outsideCount,
+          page,
+          totalPages: Math.max(1, Math.ceil(outsideCount / pageSize)),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("GET Warehouse Detail Error:", error);
+    return NextResponse.json({ error: "Lỗi tải chi tiết kho" }, { status: 500 });
+  }
+}
+
 // PATCH: CẬP NHẬT (Gỡ bỏ description)
 export async function PATCH(req: Request, props: Props) {
   try {

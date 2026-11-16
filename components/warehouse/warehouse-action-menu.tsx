@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-export function WarehouseActionMenu({ warehouse, onRefresh }: { warehouse: any, onRefresh: () => void }) {
+export function WarehouseActionMenu({ warehouse, onRefresh, onDeleted }: { warehouse: any, onRefresh: () => void, onDeleted?: () => void }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -36,7 +36,7 @@ export function WarehouseActionMenu({ warehouse, onRefresh }: { warehouse: any, 
       const res = await fetch(`/api/warehouses/${warehouse.id}`, { method: "DELETE" });
       await handleApiResponse(res, "Đã xóa kho thành công!");
       setIsDeleteOpen(false);
-      onRefresh();
+      if (onDeleted) onDeleted(); else onRefresh();
     } catch (error: any) { toast.error(error.message, { duration: 6000 }); }
     finally { setIsSaving(false); }
   };
