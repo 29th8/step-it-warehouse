@@ -10,9 +10,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Box, MapPin, Package, Server, UserRound } from "lucide-react";
+import { Box, Copy, MapPin, Package, Server, UserRound } from "lucide-react";
 import { PrintLabelModal } from "./print-label-modal"; // Re-use từ GĐ7
 import { AssetActionMenu } from "./asset-action-menu";
+import { CreateAssetModal } from "./create-asset-modal";
+import { Button } from "@/components/ui/button";
 
 const STATUS_LABELS: Record<string, string> = {
   IN_STOCK: "Trong kho",
@@ -32,13 +34,20 @@ export type AssetTableRow = {
   owner?: string | null;
   status: string;
   parentId?: string | null;
+  warehouseId: string;
+  rackId?: string | null;
   rackUnit?: number | null;
   product: {
+    id: string;
     name: string;
     modelNumber: string;
+    category: string;
+    type: string;
+    attributes?: Record<string, unknown> | null;
     productCategory?: {
       name?: string | null;
       isMain?: boolean | null;
+      code?: string | null;
     } | null;
   };
   warehouse?: { name?: string | null } | null;
@@ -53,6 +62,7 @@ interface AssetTableProps {
 }
 
 export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
+  const [copyAsset, setCopyAsset] = useState<AssetTableRow | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetTableRow | null>(null);
   const [detailOpenToken, setDetailOpenToken] = useState(0);
 
@@ -105,6 +115,7 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
                     <p className="truncate text-xs text-slate-500">{asset.product?.modelNumber}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    <Button type="button" variant="ghost" size="icon" title="Sao chép thiết bị" aria-label={`Sao chép thiết bị ${asset.serialNumber}`} onClick={() => setCopyAsset(asset)}><Copy className="h-4 w-4" /></Button>
                     <PrintLabelModal asset={asset} />
                     <AssetActionMenu asset={asset} onRefresh={onRefresh} />
                   </div>
@@ -243,6 +254,7 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
 
                 <TableCell className="text-right">
                   <div className="flex justify-end items-center gap-1">
+                    <Button type="button" variant="ghost" size="icon" title="Sao chép thiết bị" aria-label={`Sao chép thiết bị ${asset.serialNumber}`} onClick={() => setCopyAsset(asset)}><Copy className="h-4 w-4" /></Button>
                     <PrintLabelModal asset={asset} />
                     <AssetActionMenu asset={asset} onRefresh={onRefresh} />
                   </div>
@@ -261,6 +273,27 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
           hideTrigger
           openToken={detailOpenToken}
           onDetailClose={() => setDetailAsset(null)}
+        />
+      )}
+      {copyAsset && (
+        <CreateAssetModal
+          onRefresh={onRefresh}
+          onCopyClose={() => setCopyAsset(null)}
+          copyFrom={{
+            product: {
+              ...copyAsset.product,
+              type: copyAsset.product.type || "",
+              category: copyAsset.product.category || copyAsset.product.productCategory?.code || "",
+              productCategory: copyAsset.product.productCategory ? {
+                isMain: copyAsset.product.productCategory.isMain ?? undefined,
+                code: copyAsset.product.productCategory.code ?? undefined,
+              } : undefined,
+            },
+            warehouseId: copyAsset.warehouseId,
+            rackId: copyAsset.rackId,
+            rackUnit: copyAsset.rackUnit,
+            owner: copyAsset.owner,
+          }}
         />
       )}
     </div>

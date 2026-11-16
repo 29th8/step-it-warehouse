@@ -33,6 +33,8 @@ interface ProductItem {
 
 interface CreateAssetProps {
   onRefresh: () => void;
+  copyFrom?: { product: ProductItem; warehouseId: string; rackId?: string | null; rackUnit?: number | null; owner?: string | null };
+  onCopyClose?: () => void;
 }
 
 type AiAssemblyResult = {
@@ -87,8 +89,8 @@ function RackUnitFields({ formData, setFormData, racksList, allowRackUnit }: {
   );
 }
 
-export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export function CreateAssetModal({ onRefresh, copyFrom, onCopyClose }: CreateAssetProps) {
+  const [isOpen, setIsOpen] = useState(Boolean(copyFrom));
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
@@ -105,7 +107,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
   const [aiResult, setAiResult] = useState<AiAssemblyResult | null>(null);
 
   // States bộ lọc tầng
-  const [selCategory, setSelCategory] = useState<string>("");
+  const [selCategory, setSelCategory] = useState<string>(copyFrom?.product.category || "");
   const [selType, setSelType] = useState<string>("");
 
   // Dynamic States for Filters
@@ -131,8 +133,16 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     installSlotType: "",
     installSlotName: "",
   };
-  const [formData, setFormData] = useState(initialForm);
-  const selectedProduct = productsList.find(p => p.id === formData.productId);
+  const [formData, setFormData] = useState(() => copyFrom ? {
+    ...initialForm, productId: copyFrom.product.id, warehouseId: copyFrom.warehouseId,
+    rackId: copyFrom.rackId || "",
+    rackUnit: copyFrom.product.productCategory?.isMain && copyFrom.rackUnit ? String(copyFrom.rackUnit) : "",
+    owner: copyFrom.owner || "",
+  } : initialForm);
+  const availableProducts = copyFrom && formData.productId === copyFrom.product.id && !productsList.some((product) => product.id === copyFrom.product.id)
+    ? [copyFrom.product, ...productsList]
+    : productsList;
+  const selectedProduct = availableProducts.find(p => p.id === formData.productId);
   const selectedProductIsMain = selectedProduct?.productCategory?.isMain === true;
   const selectedProductIsComponent = selectedProduct?.productCategory?.isMain === false;
   const requiredSlotType = componentSlotType({ product: selectedProduct });
@@ -169,6 +179,12 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
     } catch (e) { toast.error("Lỗi kết nối."); }
     finally { setIsLoadingData(false); }
   };
+
+  React.useEffect(() => {
+    if (copyFrom) fetchCascadingData();
+    // The copy dialog is mounted for each selected source asset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 2. Tải Types khi Category thay đổi
   const onCategoryChange = async (category: string) => {
@@ -305,6 +321,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
+    if (!open && copyFrom) onCopyClose?.();
     if (open) {
       setFormData(initialForm);
       setSelCategory(""); setSelType("");
@@ -341,6 +358,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
       await handleApiResponse(res, "Đã nhập kho thiết bị thành công!");
 
       setIsOpen(false);
+      if (copyFrom) onCopyClose?.();
       onRefresh();
 
     } catch (error: any) {
@@ -352,11 +370,11 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
+      {!copyFrom && <DialogTrigger asChild>
         <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md">
           <Plus className="w-4 h-4 mr-2" />Thêm Thiết bị
         </Button>
-      </DialogTrigger>
+      </DialogTrigger>}
 
       <DialogContent className="bg-white sm:max-w-[600px] p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-4 border-b bg-slate-50">
@@ -493,7 +511,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                     required
                     value={formData.productId}
                     onValueChange={(v) => {
-                      const product = productsList.find(p => p.id === v);
+                      const product = availableProducts.find(p => p.id === v);
                       const isMain = product?.productCategory?.isMain === true;
                       setFormData({
                         ...formData,
@@ -504,12 +522,12 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                         status: isMain && formData.status === "INSTALLED" ? "IN_STOCK" : formData.status,
                       });
                     }}
-                    disabled={productsList.length === 0}
+                    disabled={availableProducts.length === 0}
                   >
-                    <SelectTrigger className="bg-white border-blue-200 ring-1 ring-blue-100"><SelectValue placeholder={productsList.length > 0 ? "Chọn sản phẩm" : "Vui lòng nhập tìm kiếm hoặc lọc..."} /></SelectTrigger>
+                    <SelectTrigger className="bg-white border-blue-200 ring-1 ring-blue-100"><SelectValue placeholder={availableProducts.length > 0 ? "Chọn sản phẩm" : "Vui lòng nhập tìm kiếm hoặc lọc..."} /></SelectTrigger>
                     <SelectContent className="max-h-[250px]">
-                      {productsList.length > 0 ? (
-                        productsList.map((p) => (
+                      {availableProducts.length > 0 ? (
+                        availableProducts.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             <div className="flex flex-col text-left py-1">
                               <span className="font-medium text-slate-800">{p.name} <span className="text-slate-400 font-mono text-xs ml-1">[{p.modelNumber}]</span></span>
@@ -527,7 +545,7 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
               {/* Product Preview Card */}
               {formData.productId && (
                 (() => {
-                  const p = productsList.find(x => x.id === formData.productId);
+                  const p = availableProducts.find(x => x.id === formData.productId);
                   if (!p) return null;
                   return (
                     <div className="mt-3 bg-white p-3 rounded-md border border-slate-200/60 shadow-sm flex items-center justify-between animate-in fade-in slide-in-from-top-2">
@@ -729,6 +747,9 @@ export function CreateAssetModal({ onRefresh }: CreateAssetProps) {
                   racksList={racksList}
                   allowRackUnit={selectedProductIsMain}
                 />
+              )}
+              {copyFrom?.rackId && copyFrom.rackUnit && selectedProductIsMain && formData.rackId === copyFrom.rackId && formData.rackUnit === String(copyFrom.rackUnit) && (
+                <p className="text-sm text-amber-700" role="status">Vị trí U đang thuộc thiết bị mẫu. Hãy chọn vị trí khác trước khi lưu.</p>
               )}
             </div>
 

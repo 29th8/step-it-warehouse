@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  MoreHorizontal, Trash, Eye, Loader2,
+  MoreHorizontal, Trash, Eye, Loader2, Copy,
   AlertTriangle, Box, BrainCircuit, Tag, Activity, Calendar, FileText, Settings, X, Save, Edit3, Layers, MapPin, Clock, CalendarClock, PackageCheck, MonitorSpeaker, Cpu
 } from "lucide-react";
 
@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AssemblyConfigDialog } from "@/components/inventory/assembly-config-dialog";
+import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 // ==========================================
@@ -28,6 +29,8 @@ interface Rack { id: string; name: string; warehouseId: string; }
 interface Product {
   id: string;
   name: string;
+  modelNumber?: string;
+  type?: string | null;
   category?: string;
   attributes?: Record<string, unknown> | null;
   productCategory?: { isMain?: boolean; code?: string };
@@ -97,6 +100,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
   // ================= STATE =================
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isCopyOpen, setIsCopyOpen] = useState(false);
   const [isAssemblyOpen, setIsAssemblyOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [detailData, setDetailData] = useState<AssetDetail | null>(null);
@@ -670,7 +674,16 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={!detailData.product}
+                          onClick={() => { setIsDetailOpen(false); setIsCopyOpen(true); }}
+                          className="bg-white"
+                        >
+                          <Copy className="w-4 h-4 mr-2" /> Sao chép
+                        </Button>
                         {detailProductIsMain && (
                           <Button
                             type="button"
@@ -1008,6 +1021,25 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
           </div>
         </DialogContent>
       </Dialog>
+
+      {isCopyOpen && detailData?.product && (
+        <CreateAssetModal
+          onRefresh={onRefresh}
+          onCopyClose={() => { setIsCopyOpen(false); onDetailClose?.(); }}
+          copyFrom={{
+            product: {
+              ...detailData.product,
+              modelNumber: detailData.product.modelNumber || "",
+              type: detailData.product.type || "",
+              category: detailData.product.category || detailData.product.productCategory?.code || "",
+            },
+            warehouseId: detailData.warehouseId,
+            rackId: detailData.rackId,
+            rackUnit: detailData.rackUnit,
+            owner: detailData.owner,
+          }}
+        />
+      )}
 
       <AssemblyConfigDialog
         open={isAssemblyOpen}
