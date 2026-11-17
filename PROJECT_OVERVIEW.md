@@ -15,7 +15,7 @@ Kiểm tra handover: chỉ mục API khớp tĩnh 42 file route và method expor
 Ứng dụng quản lý kho thiết bị IT theo sản phẩm, serial, vị trí, lắp ráp, thuê và bàn giao. `package.json` xác định Next.js 16 App Router, React 19, TypeScript, Prisma 6/PostgreSQL, NextAuth Credentials/bcrypt, Tailwind 4, Radix, ExcelJS/xlsx-js-style, QR, Recharts, Nodemailer và date-fns.
 
 - `app/(auth)` và `app/(dashboard)`: login và các trang dashboard, tài sản, sản phẩm, kho, rack, lắp ráp, thuê, bàn giao, quét, lịch sử, người dùng.
-- `app/api`: 42 route handler, gồm auth, dashboard, assets/import/export/restore, assembly, product taxonomy/attributes, kho/rack, rental, handover, history, users, AI, cron, Telegram và health.
+- `app/api`: route handler cho auth, dashboard, assets/import/export/restore, assembly, product taxonomy/attributes, kho/rack, rental, handover, history, users/profile, AI, cron, Telegram và health.
 - `components`: UI theo nghiệp vụ, layout và primitives; `context` quản lý sidebar; session provider bọc ứng dụng. Client dùng local React state và `fetch`; chưa xác minh toàn bộ state của mọi trang.
 - `lib`: Prisma singleton, quy tắc asset/rack/slot, validation, helper UI/API và các dịch vụ email, Telegram, cảnh báo thuê, Hermes.
 - `prisma`: schema, seed, backfill và 10 migration; `scripts`, `docker`, `.github/workflows`, `nginx`: vận hành. `.history` là các bản sao lịch sử, chưa xác minh cách sử dụng; `prisma.config.ts.backup` là tệp backup theo tên, chưa xác minh nguồn gốc. Không coi chúng là code chạy chỉ dựa vào tên.

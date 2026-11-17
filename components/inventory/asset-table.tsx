@@ -15,6 +15,7 @@ import { PrintLabelModal } from "./print-label-modal"; // Re-use từ GĐ7
 import { AssetActionMenu } from "./asset-action-menu";
 import { CreateAssetModal } from "./create-asset-modal";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const STATUS_LABELS: Record<string, string> = {
   IN_STOCK: "Trong kho",
@@ -58,10 +59,12 @@ export type AssetTableRow = {
 interface AssetTableProps {
   data: AssetTableRow[];
   loading?: boolean;
-  onRefresh: () => void; // Thêm dòng này
+  onRefresh: () => void;
+  selectedIds?: Set<string>;
+  onSelectedIdsChange?: (ids: Set<string>) => void;
 }
 
-export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
+export function AssetTable({ data, loading, onRefresh, selectedIds = new Set(), onSelectedIdsChange }: AssetTableProps) {
   const [copyAsset, setCopyAsset] = useState<AssetTableRow | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetTableRow | null>(null);
   const [detailOpenToken, setDetailOpenToken] = useState(0);
@@ -69,6 +72,21 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
   const openRowDetail = (asset: AssetTableRow) => {
     setDetailAsset(asset);
     setDetailOpenToken((token) => token + 1);
+  };
+
+  const isPageSelected = data.length > 0 && data.every((asset) => selectedIds.has(asset.id));
+  const toggleAsset = (assetId: string, checked: boolean) => {
+    if (!onSelectedIdsChange) return;
+    const next = new Set(selectedIds);
+    if (checked) next.add(assetId);
+    else next.delete(assetId);
+    onSelectedIdsChange(next);
+  };
+  const togglePage = (checked: boolean) => {
+    if (!onSelectedIdsChange) return;
+    const next = new Set(selectedIds);
+    data.forEach((asset) => checked ? next.add(asset.id) : next.delete(asset.id));
+    onSelectedIdsChange(next);
   };
 
   // Helper hiển thị màu sắc trạng thái
@@ -101,7 +119,9 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
             {data.map((asset) => (
               <article key={asset.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 gap-3">
+                    <Checkbox aria-label={`Chọn thiết bị ${asset.serialNumber}`} checked={selectedIds.has(asset.id)} onCheckedChange={(checked) => toggleAsset(asset.id, checked === true)} className="mt-0.5" />
+                    <div className="min-w-0">
                     <button
                       type="button"
                       onClick={() => openRowDetail(asset)}
@@ -113,6 +133,7 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
                       {asset.product?.name || "Chưa có sản phẩm"}
                     </p>
                     <p className="truncate text-xs text-slate-500">{asset.product?.modelNumber}</p>
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" variant="ghost" size="icon" title="Sao chép thiết bị" aria-label={`Sao chép thiết bị ${asset.serialNumber}`} onClick={() => setCopyAsset(asset)}><Copy className="h-4 w-4" /></Button>
@@ -170,6 +191,9 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
       <Table>
         <TableHeader>
           <TableRow className="bg-slate-50/50">
+            <TableHead className="w-11 px-3">
+              <Checkbox aria-label="Chọn tất cả thiết bị trên trang" checked={isPageSelected} onCheckedChange={(checked) => togglePage(checked === true)} disabled={loading || data.length === 0} />
+            </TableHead>
             <TableHead className="w-[180px] font-bold">Serial Number</TableHead>
             <TableHead className="font-bold">Sản phẩm & Model</TableHead>
             <TableHead className="font-bold">Chủ sở hữu</TableHead>
@@ -181,11 +205,11 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-10">Đang tải dữ liệu...</TableCell>
+              <TableCell colSpan={7} className="text-center py-10">Đang tải dữ liệu...</TableCell>
             </TableRow>
           ) : data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-10 text-slate-400 italic">
+              <TableCell colSpan={7} className="text-center py-10 text-slate-400 italic">
                 Không tìm thấy thiết bị nào phù hợp.
               </TableCell>
             </TableRow>
@@ -195,6 +219,9 @@ export function AssetTable({ data, loading, onRefresh }: AssetTableProps) {
                 key={asset.id}
                 className="hover:bg-slate-50/50 transition-colors"
               >
+                <TableCell className="px-3">
+                  <Checkbox aria-label={`Chọn thiết bị ${asset.serialNumber}`} checked={selectedIds.has(asset.id)} onCheckedChange={(checked) => toggleAsset(asset.id, checked === true)} />
+                </TableCell>
                 {/* 1. Serial Number */}
                 <TableCell className="font-mono font-bold text-blue-600">
                   <button

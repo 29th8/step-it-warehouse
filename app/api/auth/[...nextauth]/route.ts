@@ -89,11 +89,14 @@ export const authOptions: NextAuthOptions = {
   // =====================================================================
   callbacks: {
     // Bước 1: Nạp dữ liệu từ CSDL (chỉ chạy 1 lần lúc đăng nhập) vào JWT Token
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.username = user.username;
         token.role = user.role;
+      }
+      if (trigger === "update" && typeof session?.name === "string") {
+        token.name = session.name;
       }
       return token;
     },
@@ -101,6 +104,7 @@ export const authOptions: NextAuthOptions = {
     // Bước 2: Truyền dữ liệu từ JWT Token ra ngoài Session để Frontend dùng
     async session({ session, token }) {
       if (session.user) {
+        session.user.name = token.name || session.user.name;
         session.user.id = token.id;
         session.user.username = token.username;
         session.user.role = token.role;

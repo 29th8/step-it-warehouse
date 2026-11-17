@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
-import { Bell, LogOut, User, Settings } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,25 +15,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function Header() {
-  // STATE THÔNG BÁO (Chuông)
-  const [notifications, setNotifications] = useState<any[]>([]);
-
-  // LẤY THÔNG BÁO THIẾT BỊ LỖI
-  useEffect(() => {
-    fetch("/api/dashboard")
-      .then((res) => res.json())
-      .then((d) => {
-        if (d.alerts) setNotifications(d.alerts);
-      })
-      .catch(() => console.error("Lỗi lấy thông báo"));
-  }, []);
-
   const { data: session } = useSession();
 
-  const user = session?.user as any;
+  const user = session?.user as { name?: string; username?: string; role?: string } | undefined;
 
   const displayName = user?.name || user?.username || "User";
-  const email = user?.email || "";
   const role = user?.role || "User";
 
   const avatarLetter = displayName.charAt(0).toUpperCase();
@@ -59,7 +43,7 @@ export function Header() {
               </div>
 
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 flex items-center justify-center text-white font-bold text-sm shadow-sm ring-2 ring-white">
-                A
+                {avatarLetter}
               </div>
             </button>
           </DropdownMenuTrigger>
@@ -69,21 +53,21 @@ export function Header() {
             <DropdownMenuLabel className="font-normal px-2 py-3">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-bold leading-none text-slate-800">Tài khoản của tôi</p>
-                <p className="text-xs leading-none text-slate-500 mt-1">admin@step.company</p>
+                <p className="text-xs leading-none text-slate-500 mt-1">{user?.username || ""}</p>
               </div>
             </DropdownMenuLabel>
 
             <DropdownMenuSeparator className="bg-slate-100" />
 
             <DropdownMenuGroup>
-              <DropdownMenuItem className="cursor-pointer py-2 px-3 text-slate-600 hover:text-slate-900 focus:bg-slate-50 transition-colors">
-                <User className="mr-2 h-4 w-4 text-slate-400" />
-                <span>Hồ sơ cá nhân</span>
+              <DropdownMenuItem asChild className="cursor-pointer py-2 px-3 text-slate-600 hover:text-slate-900 focus:bg-slate-50 transition-colors">
+                <Link href="/profile"><User className="mr-2 h-4 w-4 text-slate-400" /><span>Hồ sơ cá nhân</span></Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer py-2 px-3 text-slate-600 hover:text-slate-900 focus:bg-slate-50 transition-colors">
-                <Settings className="mr-2 h-4 w-4 text-slate-400" />
-                <span>Cài đặt hệ thống</span>
-              </DropdownMenuItem>
+              {role === "ADMIN" && (
+                <DropdownMenuItem asChild className="cursor-pointer py-2 px-3 text-slate-600 hover:text-slate-900 focus:bg-slate-50 transition-colors">
+                  <Link href="/users"><Settings className="mr-2 h-4 w-4 text-slate-400" /><span>Cài đặt hệ thống</span></Link>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
 
             <DropdownMenuSeparator className="bg-slate-100" />

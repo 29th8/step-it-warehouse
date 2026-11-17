@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Filter, MapPin, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Filter, MapPin, Package, RefreshCw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger
 import { AssetTable, type AssetTableRow } from "@/components/inventory/asset-table";
 import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { ImportAssetModal } from "@/components/inventory/import-asset-modal";
+import { ExportAssetsDialog } from "@/components/inventory/export-assets-dialog";
 import type { ProductCategoryOption } from "@/components/products/product-category-manager";
 import type { ProductAttributeDefinition } from "@/components/products/product-attribute-fields";
 
@@ -60,6 +61,7 @@ export default function AssetListPage() {
   const [activeCategory, setActiveCategory] = useState("");
 
   const [assets, setAssets] = useState<AssetTableRow[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(() => new Set());
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
@@ -540,14 +542,7 @@ export default function AssetListPage() {
 
           <div className="flex gap-2 overflow-x-auto pb-1 md:hidden">
             <ImportAssetModal onRefresh={refreshAll} />
-            <Button
-              variant="outline"
-              className="h-10 shrink-0 bg-white shadow-sm"
-              onClick={() => window.open("/api/assets/export/report", "_blank")}
-            >
-              <Download className="w-4 h-4 text-green-600" />
-              Export
-            </Button>
+            <ExportAssetsDialog filterParams={buildParams(1)} filteredCount={total} selectedIds={Array.from(selectedAssetIds)} categories={categories} />
             <CreateAssetModal onRefresh={refreshAll} />
           </div>
 
@@ -610,14 +605,7 @@ export default function AssetListPage() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
               <ImportAssetModal onRefresh={refreshAll} />
-              <Button
-                variant="outline"
-                className="bg-white border-slate-200 hover:bg-slate-50 shadow-sm text-slate-700 h-10 whitespace-nowrap"
-                onClick={() => window.open("/api/assets/export/report", "_blank")}
-              >
-                <Download className="w-4 h-4 mr-2 text-green-600 shrink-0" />
-                Export
-              </Button>
+              <ExportAssetsDialog filterParams={buildParams(1)} filteredCount={total} selectedIds={Array.from(selectedAssetIds)} categories={categories} />
               <div className="w-[1px] h-6 bg-slate-200 mx-1 hidden sm:block" />
               <div className="shrink-0">
                 <CreateAssetModal onRefresh={refreshAll} />
@@ -770,10 +758,16 @@ export default function AssetListPage() {
             <p className="text-sm text-slate-500">
               Tổng <strong className="text-blue-600">{total}</strong> thiết bị
             </p>
+            {selectedAssetIds.size > 0 && (
+              <button type="button" onClick={() => setSelectedAssetIds(new Set())} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100">
+                Đã chọn {selectedAssetIds.size}
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <AssetTable data={assets} loading={loading} onRefresh={refreshAll} />
+            <AssetTable data={assets} loading={loading} onRefresh={refreshAll} selectedIds={selectedAssetIds} onSelectedIdsChange={setSelectedAssetIds} />
           </div>
           {totalPages > 1 && (
             <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm mt-3">
