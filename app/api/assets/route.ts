@@ -186,6 +186,8 @@ export async function GET(req: Request) {
       } else if (statusFilter === "AVAILABLE_STOCK") {
         whereClause.status = "IN_STOCK";
         whereClause.parentId = null;
+      } else if (statusFilter === "NEEDS_ATTENTION") {
+        whereClause.status = { in: ["MAINTENANCE", "FAULTY"] };
       } else {
         whereClause.status = statusFilter;
       }

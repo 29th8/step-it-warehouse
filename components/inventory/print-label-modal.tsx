@@ -10,7 +10,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, QrCode } from "lucide-react";
+import { Printer } from "lucide-react";
 
 interface PrintLabelProps {
   asset: {
@@ -20,20 +20,23 @@ interface PrintLabelProps {
       modelNumber: string;
     };
   };
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
-export function PrintLabelModal({ asset }: PrintLabelProps) {
+export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false }: PrintLabelProps) {
   const handlePrint = () => {
     window.print();
   };
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {!hideTrigger && <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="flex gap-2">
           <Printer className="w-4 h-4" /> In Tem
         </Button>
-      </DialogTrigger>
+      </DialogTrigger>}
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Xem trước tem nhãn</DialogTitle>

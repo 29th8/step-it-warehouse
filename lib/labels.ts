@@ -9,5 +9,4 @@ export const PRODUCT_CATEGORY_LABELS: Record<string, string> = {
     ACCESSORY: "Phụ kiện",
     MEMORY: "RAM",
     CPU: "CPU",
-
 };

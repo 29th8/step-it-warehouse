@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getProductRackUnitHeight } from "@/lib/product-u-height";
 import { componentSlotType, getSlotNames, validateComponentCompatibility } from "@/lib/server-slots";
+import { checkRackOverlap } from "@/lib/rack-utils";
 
 const HEADER_ALIASES: Record<string, string[]> = {
     serialNumber: ["Số serial", "SerialNumber", "Serial Number", "SN"],
@@ -41,11 +42,11 @@ export async function POST(req: Request) {
     try {
         // 1. Auth check
         const session = await getServerSession(authOptions);
-        const sessionIdentifier = session?.user?.name || (session?.user as any)?.username;
-        if (!sessionIdentifier) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        const sessionUserId = session?.user?.id;
+        if (!sessionUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const currentUser = await prisma.user.findFirst({
-            where: { OR: [{ username: sessionIdentifier }, { name: sessionIdentifier }] }
+            where: { id: sessionUserId, isActive: true }
         });
         if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
         const userId = currentUser.id;
@@ -123,6 +124,26 @@ export async function POST(req: Request) {
         const invalidRows: any[] = [];
         const serialsInFile = new Set<string>(); // catch duplicates inside the file
         const slotsInFile = new Set<string>();
+        const rackAssets = await prisma.asset.findMany({
+            where: { rackId: { not: null }, rackUnit: { not: null }, deletedAt: null, parentId: null },
+            select: { id: true, rackId: true, rackUnit: true, uHeight: true },
+        });
+        const occupiedRackUnits = new Map<string, typeof rackAssets>();
+        for (const asset of rackAssets) {
+            if (!asset.rackId) continue;
+            const group = occupiedRackUnits.get(asset.rackId) || [];
+            group.push(asset);
+            occupiedRackUnits.set(asset.rackId, group);
+        }
+        const inputSerials = Array.from(new Set(rawData.map((row) => readCell(row, "serialNumber")).filter(Boolean)));
+        const existingSerials = new Set<string>();
+        for (let i = 0; i < inputSerials.length; i += 1000) {
+            const existing = await prisma.asset.findMany({
+                where: { serialNumber: { in: inputSerials.slice(i, i + 1000) } },
+                select: { serialNumber: true },
+            });
+            existing.forEach((asset) => existingSerials.add(asset.serialNumber));
+        }
 
         for (const row of rawData) {
             const serialNumber = readCell(row, "serialNumber");
@@ -149,10 +170,8 @@ export async function POST(req: Request) {
             }
 
             // Check DB existence if Serial provided
-            let existingAsset = null;
-            if (serialNumber) {
-                existingAsset = await prisma.asset.findUnique({ where: { serialNumber } });
-                if (existingAsset) errors.push(`SerialNumber already exists in system`);
+            if (serialNumber && existingSerials.has(serialNumber)) {
+                errors.push(`SerialNumber already exists in system`);
             }
 
             // B. Product Model mapping
@@ -184,7 +203,10 @@ export async function POST(req: Request) {
 
             // D. Rack mapping (Optional)
             let rackId = null;
-            const rackUnit = rackUnitStr ? parseInt(rackUnitStr) : null;
+            const rackUnit = rackUnitStr ? Number(rackUnitStr) : null;
+            if (rackUnitStr && (!Number.isInteger(rackUnit) || !rackUnit || rackUnit < 1)) {
+                errors.push("Vị trí U phải là số nguyên dương.");
+            }
 
             if (rkName) {
                 if (!warehouseId) {
@@ -199,8 +221,11 @@ export async function POST(req: Request) {
                         if (productIsMain && rackUnit && rackUnit < 1) {
                             errors.push(`RackUnit must be greater than or equal to 1`);
                         }
-                        if (productIsMain && rackUnit && mappedRack.totalUnits && (rackUnit < 1 || rackUnit > mappedRack.totalUnits)) {
+                        if (productIsMain && rackUnit && mappedRack.totalUnits && rackUnit + uHeight - 1 > mappedRack.totalUnits) {
                             errors.push(`RackUnit ${rackUnit} exceeds Rack limits (1-${mappedRack.totalUnits})`);
+                        }
+                        if (productIsMain && !parentSerial && rackUnit && Number.isInteger(rackUnit) && rackUnit > 0 && checkRackOverlap(rackUnit, uHeight, occupiedRackUnits.get(mappedRack.id) || [])) {
+                            errors.push(`Vị trí U${rackUnit} đã bị thiết bị khác chiếm.`);
                         }
                     }
                 }
@@ -290,9 +315,15 @@ export async function POST(req: Request) {
                 invalidRows.push({
                     row: row["_rowNum"],
                     serialNumber: serialNumber || "UNKNOWN",
-                    error: errors.join(" | ")
+                    error: errors.join(" | "),
+                    originalData: Object.fromEntries(Object.entries(row).filter(([key]) => key !== "_rowNum")),
                 });
             } else {
+                if (rackId && rackUnit && productIsMain && !parentId) {
+                    const group = occupiedRackUnits.get(rackId) || [];
+                    group.push({ id: `import-${row["_rowNum"]}`, rackId, rackUnit, uHeight });
+                    occupiedRackUnits.set(rackId, group);
+                }
                 validRows.push({
                     row: row["_rowNum"],
                     serialNumber,
@@ -306,7 +337,8 @@ export async function POST(req: Request) {
                     installSlotType,
                     installSlotName: normalizedInstallSlotName,
                     owner,
-                    notes: readCell(row, "notes") || ""
+                    notes: readCell(row, "notes") || "",
+                    originalData: Object.fromEntries(Object.entries(row).filter(([key]) => key !== "_rowNum"))
                 });
             }
         }
@@ -328,7 +360,7 @@ export async function POST(req: Request) {
         }
 
         // Process in chunks to prevent memory/transaction timeouts
-        const CHUNK_SIZE = 500;
+        const CHUNK_SIZE = 20;
         let successCount = 0;
         const failedImportRows: any[] = [...invalidRows]; // keep track of previously failed
 
@@ -384,7 +416,8 @@ export async function POST(req: Request) {
                     failedImportRows.push({
                         row: chunk[idx].row,
                         serialNumber: chunk[idx].serialNumber,
-                        error: `Lỗi import DB: ${res.reason.message || res.reason}`
+                        error: `Lỗi import DB: ${res.reason.message || res.reason}`,
+                        originalData: chunk[idx].originalData,
                     });
                 }
             });

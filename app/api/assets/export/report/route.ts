@@ -56,6 +56,8 @@ function buildFilteredWhere(params: URLSearchParams): Prisma.AssetWhereInput {
     } else if (status === "AVAILABLE_STOCK") {
       where.status = "IN_STOCK";
       where.parentId = null;
+    } else if (status === "NEEDS_ATTENTION") {
+      where.status = { in: ["MAINTENANCE", "FAULTY"] };
     } else if (validStatuses.has(status as AssetStatus)) where.status = status as AssetStatus;
   }
 

@@ -10,11 +10,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Box, Copy, MapPin, Package, Server, UserRound } from "lucide-react";
-import { PrintLabelModal } from "./print-label-modal"; // Re-use từ GĐ7
+import { Box, MapPin, Package, Server, UserRound } from "lucide-react";
+import { PrintLabelModal } from "./print-label-modal";
 import { AssetActionMenu } from "./asset-action-menu";
 import { CreateAssetModal } from "./create-asset-modal";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,6 +65,7 @@ interface AssetTableProps {
 
 export function AssetTable({ data, loading, onRefresh, selectedIds = new Set(), onSelectedIdsChange }: AssetTableProps) {
   const [copyAsset, setCopyAsset] = useState<AssetTableRow | null>(null);
+  const [printAsset, setPrintAsset] = useState<AssetTableRow | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetTableRow | null>(null);
   const [detailOpenToken, setDetailOpenToken] = useState(0);
 
@@ -135,11 +135,7 @@ export function AssetTable({ data, loading, onRefresh, selectedIds = new Set(), 
                     <p className="truncate text-xs text-slate-500">{asset.product?.modelNumber}</p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button type="button" variant="ghost" size="icon" title="Sao chép thiết bị" aria-label={`Sao chép thiết bị ${asset.serialNumber}`} onClick={() => setCopyAsset(asset)}><Copy className="h-4 w-4" /></Button>
-                    <PrintLabelModal asset={asset} />
-                    <AssetActionMenu asset={asset} onRefresh={onRefresh} />
-                  </div>
+                  <AssetActionMenu asset={asset} onRefresh={onRefresh} onCopy={() => setCopyAsset(asset)} onPrintLabel={() => setPrintAsset(asset)} />
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -280,11 +276,7 @@ export function AssetTable({ data, loading, onRefresh, selectedIds = new Set(), 
                 </TableCell>
 
                 <TableCell className="text-right">
-                  <div className="flex justify-end items-center gap-1">
-                    <Button type="button" variant="ghost" size="icon" title="Sao chép thiết bị" aria-label={`Sao chép thiết bị ${asset.serialNumber}`} onClick={() => setCopyAsset(asset)}><Copy className="h-4 w-4" /></Button>
-                    <PrintLabelModal asset={asset} />
-                    <AssetActionMenu asset={asset} onRefresh={onRefresh} />
-                  </div>
+                  <div className="flex justify-end"><AssetActionMenu asset={asset} onRefresh={onRefresh} onCopy={() => setCopyAsset(asset)} onPrintLabel={() => setPrintAsset(asset)} /></div>
                 </TableCell>
 
               </TableRow>
@@ -322,6 +314,9 @@ export function AssetTable({ data, loading, onRefresh, selectedIds = new Set(), 
             owner: copyAsset.owner,
           }}
         />
+      )}
+      {printAsset && (
+        <PrintLabelModal asset={printAsset} open onOpenChange={(open) => !open && setPrintAsset(null)} hideTrigger />
       )}
     </div>
   );

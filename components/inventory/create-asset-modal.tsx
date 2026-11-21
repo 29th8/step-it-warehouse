@@ -20,6 +20,7 @@ import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 // Định nghĩa Interfaces
 interface BasicItem { id: string; name: string; warehouseId?: string; type?: string; }
+interface CategoryItem { id: string; code: string; name: string; }
 interface ProductItem {
   id: string;
   name: string;
@@ -95,7 +96,7 @@ export function CreateAssetModal({ onRefresh, copyFrom, onCopyClose }: CreateAss
   const [isLoadingData, setIsLoadingData] = useState(false);
 
   // States danh mục
-  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [categoriesList, setCategoriesList] = useState<CategoryItem[]>([]);
   const [typesList, setTypesList] = useState<string[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [warehousesList, setWarehousesList] = useState<BasicItem[]>([]);
@@ -166,7 +167,7 @@ export function CreateAssetModal({ onRefresh, copyFrom, onCopyClose }: CreateAss
     setIsLoadingData(true);
     try {
       const [catRes, wareRes, rackRes, parentsRes] = await Promise.all([
-        fetch("/api/products/taxonomy?field=category"),
+        fetch("/api/product-categories"),
         fetch("/api/warehouses"),
         fetch("/api/racks"),
         fetch("/api/assets?tabFilter=main&pageSize=100&page=1")
@@ -401,7 +402,11 @@ export function CreateAssetModal({ onRefresh, copyFrom, onCopyClose }: CreateAss
                   <Select value={selCategory} onValueChange={onCategoryChange}>
                     <SelectTrigger className="bg-white"><SelectValue placeholder="Tất cả" /></SelectTrigger>
                     <SelectContent>
-                      {categoriesList.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      {categoriesList.map((category) => (
+                        <SelectItem key={category.id} value={category.code}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

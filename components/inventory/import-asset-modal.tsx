@@ -11,7 +11,6 @@ import * as XLSX from "xlsx-js-style";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
@@ -34,14 +33,12 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
 
     // Loading states
     const [isProcessing, setIsProcessing] = useState(false);
-    const [importProgress, setImportProgress] = useState(0);
 
     const resetState = () => {
         setStep(1);
         setFile(null);
         setPreviewData(null);
         setIsProcessing(false);
-        setImportProgress(0);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
@@ -101,15 +98,6 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
         setIsProcessing(true);
         setStep(3); // Chuyển sang bước Progress
 
-        // Giả lập Progress Bar chạy trong lúc chờ API (Thực tế là fetch)
-        // Vì API fetch một lúc, ta cập nhật progress ảo cho UX
-        let progressInterval = setInterval(() => {
-            setImportProgress(prev => {
-                const inc = prev + Math.random() * 15;
-                return inc >= 90 ? 90 : inc; // Dừng ở 90% đợi API
-            });
-        }, 500);
-
         try {
             const formData = new FormData();
             formData.append("file", file);
@@ -121,9 +109,6 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
             });
 
             const data = await handleApiResponse(res);
-
-            clearInterval(progressInterval);
-            setImportProgress(100);
 
             toast.success(`Đã import thành công ${data.successCount} thiết bị!`);
 
@@ -139,7 +124,6 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
             }
 
         } catch (error: any) {
-            clearInterval(progressInterval);
             toast.error(error.message);
             setStep(2); // Quay lại Preview nếu lỗi mạng
         } finally {
@@ -152,9 +136,9 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
         if (!previewData || previewData.invalidRows.length === 0) return;
 
         const ws = XLSX.utils.json_to_sheet(previewData.invalidRows.map(row => ({
-            "Dòng (Row)": row.row,
-            "Serial Number": row.serialNumber,
-            "Lý do lỗi (Error)": row.error
+            ...row.originalData,
+            "Dòng gốc": row.row,
+            "Lỗi import": row.error
         })));
 
         const wb = XLSX.utils.book_new();
@@ -314,15 +298,11 @@ export function ImportAssetModal({ onRefresh }: ImportAssetProps) {
                         <div className="py-12 flex flex-col items-center justify-center space-y-6 animate-in slide-in-from-bottom-4 duration-500 text-center">
                             <div className="relative">
                                 <Loader2 className="w-16 h-16 text-indigo-500 animate-spin" />
-                                <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-indigo-700">
-                                    {Math.round(importProgress)}%
-                                </div>
                             </div>
 
                             <div className="space-y-2 w-full max-w-sm">
                                 <h3 className="text-xl font-bold text-slate-800">Đang lưu vào Database...</h3>
                                 <p className="text-slate-500 text-sm">Quá trình này có thể mất vài phút với dữ liệu lớn.</p>
-                                <Progress value={importProgress} className="h-2 bg-indigo-100" />
                             </div>
                         </div>
                     )}

@@ -19,6 +19,22 @@ import type { ProductAttributeDefinition } from "@/components/products/product-a
 const PAGE_SIZE = 50;
 const SERVER_PRIMARY_FILTER_KEYS = ["uHeight", "dimmSlots", "driveBays"];
 const DEFAULT_PRIMARY_FILTER_LIMIT = 4;
+const QUICK_STATUS_FILTERS = [
+  { value: "ALL", label: "Tất cả tình trạng" },
+  { value: "WAREHOUSE_STOCK", label: "Trong kho" },
+  { value: "AVAILABLE_STOCK", label: "Thiết bị rời trong kho" },
+  { value: "DEPLOYED", label: "Đang sử dụng" },
+  { value: "RENTED", label: "Đang thuê" },
+  { value: "NEEDS_ATTENTION", label: "Cần xử lý" },
+  { value: "DISPOSED", label: "Thanh lý" },
+] as const;
+const DETAILED_STATUS_FILTERS = [
+  { value: "INSTALLED", label: "Đã lắp trong server" },
+  { value: "HANDED_OVER", label: "Đã bàn giao" },
+  { value: "MAINTENANCE", label: "Bảo trì" },
+  { value: "FAULTY", label: "Lỗi hỏng" },
+  { value: "RESERVED", label: "Đã giữ" },
+] as const;
 
 type AssetResponse = {
   data?: AssetTableRow[];
@@ -103,11 +119,16 @@ export default function AssetListPage() {
   }, [primaryDefinitions, selectedDefinitions]);
 
   const activeAdvancedFilterCount = useMemo(() => {
-    return advancedDefinitions.filter((definition) => {
+    const attributeCount = advancedDefinitions.filter((definition) => {
       const value = attributeFilters[definition.key];
       return value && value !== "none";
     }).length;
-  }, [advancedDefinitions, attributeFilters]);
+    return attributeCount + (DETAILED_STATUS_FILTERS.some((status) => status.value === filterStatus) ? 1 : 0);
+  }, [advancedDefinitions, attributeFilters, filterStatus]);
+
+  const quickStatusValue = QUICK_STATUS_FILTERS.some((status) => status.value === filterStatus)
+    ? filterStatus
+    : "ADVANCED";
 
   const filteredCategories = useMemo(() => {
     const keyword = categorySearch.trim().toLowerCase();
@@ -311,6 +332,9 @@ export default function AssetListPage() {
       }
       return next;
     });
+    if (DETAILED_STATUS_FILTERS.some((status) => status.value === filterStatus)) {
+      setFilterStatus("ALL");
+    }
   };
 
   const clearAllFilters = () => {
@@ -456,24 +480,23 @@ export default function AssetListPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Trạng thái</label>
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <label className="text-sm font-medium text-slate-700">Tình trạng nhanh</label>
+                    <Select value={quickStatusValue} onValueChange={setFilterStatus}>
                       <SelectTrigger className="h-11 w-full bg-white">
-                        <SelectValue placeholder="Trạng thái" />
+                        <SelectValue placeholder="Tình trạng" />
                       </SelectTrigger>
                       <SelectContent className="bg-white">
-                        <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-                        <SelectItem value="WAREHOUSE_STOCK">Trong kho vật lý</SelectItem>
-                        <SelectItem value="AVAILABLE_STOCK">Rời / khả dụng</SelectItem>
-                        <SelectItem value="INSTALLED">Đã lắp trong server</SelectItem>
-                        <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
-                        <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
-                        <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
-                        <SelectItem value="RENTED">Đang thuê</SelectItem>
-                        <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>
-                        <SelectItem value="DISPOSED">Thanh lý</SelectItem>
+                        {QUICK_STATUS_FILTERS.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
+                        {quickStatusValue === "ADVANCED" && <SelectItem value="ADVANCED" disabled>Đang lọc chi tiết</SelectItem>}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-100 pt-4">
+                    <div className="flex items-center justify-between"><label className="text-sm font-medium text-slate-700">Trạng thái chi tiết</label>{quickStatusValue === "ADVANCED" && <button type="button" onClick={() => setFilterStatus("ALL")} className="text-xs font-semibold text-blue-600">Xóa</button>}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {DETAILED_STATUS_FILTERS.map((status) => <button key={status.value} type="button" onClick={() => setFilterStatus(status.value)} className={`rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors ${filterStatus === status.value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"}`}>{status.label}</button>)}
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -562,24 +585,16 @@ export default function AssetListPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <Select value={quickStatusValue} onValueChange={setFilterStatus}>
                 <SelectTrigger className="h-11 w-full sm:w-[200px] bg-white border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-medium">
                   <div className="flex items-center gap-2 truncate">
                     <Filter className="w-4 h-4 text-slate-500 shrink-0" />
-                    <SelectValue placeholder="Trạng thái" />
+                    <SelectValue placeholder="Tình trạng" />
                   </div>
                 </SelectTrigger>
                 <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
-                  <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-                  <SelectItem value="WAREHOUSE_STOCK">Trong kho vật lý</SelectItem>
-                  <SelectItem value="AVAILABLE_STOCK">Rời / khả dụng</SelectItem>
-                  <SelectItem value="INSTALLED">Đã lắp trong server</SelectItem>
-                  <SelectItem value="DEPLOYED">Đang sử dụng</SelectItem>
-                  <SelectItem value="HANDED_OVER">Đã bàn giao</SelectItem>
-                  <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
-                  <SelectItem value="RENTED">Đang thuê</SelectItem>
-                  <SelectItem value="FAULTY">Lỗi hỏng</SelectItem>
-                  <SelectItem value="DISPOSED">Thanh lý</SelectItem>
+                  {QUICK_STATUS_FILTERS.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
+                  {quickStatusValue === "ADVANCED" && <SelectItem value="ADVANCED" disabled>Đang lọc chi tiết</SelectItem>}
                 </SelectContent>
               </Select>
 
@@ -625,8 +640,7 @@ export default function AssetListPage() {
               <span className="text-sm text-slate-400 italic py-2 shrink-0">Danh mục này chưa có thuộc tính lọc.</span>
             )}
 
-            {advancedDefinitions.length > 0 && (
-              <Sheet open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
+            <Sheet open={advancedFilterOpen} onOpenChange={setAdvancedFilterOpen}>
                 <SheetTrigger asChild>
                   <Button
                     type="button"
@@ -634,7 +648,7 @@ export default function AssetListPage() {
                     className="h-9 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
                   >
                     <SlidersHorizontal className="w-4 h-4 mr-2 text-blue-600" />
-                    Bộ lọc nâng cao
+                    Bộ lọc chi tiết
                     {activeAdvancedFilterCount > 0 && (
                       <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">
                         {activeAdvancedFilterCount}
@@ -650,7 +664,13 @@ export default function AssetListPage() {
                     </SheetTitle>
                   </SheetHeader>
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {advancedDefinitions.map((definition) => renderAttributeFilter(definition, "sheet"))}
+                    <div className="space-y-3">
+                      <p className="text-sm font-bold text-slate-900">Trạng thái chi tiết</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {DETAILED_STATUS_FILTERS.map((status) => <button key={status.value} type="button" onClick={() => setFilterStatus(status.value)} className={`rounded-md border px-3 py-2.5 text-left text-sm font-medium transition-colors ${filterStatus === status.value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>{status.label}</button>)}
+                      </div>
+                    </div>
+                    {advancedDefinitions.length > 0 && <div className="space-y-4 border-t border-slate-100 pt-4">{advancedDefinitions.map((definition) => renderAttributeFilter(definition, "sheet"))}</div>}
                   </div>
                   <SheetFooter className="border-t bg-slate-50 sm:flex-row sm:justify-between">
                     <Button
@@ -673,7 +693,6 @@ export default function AssetListPage() {
                   </SheetFooter>
                 </SheetContent>
               </Sheet>
-            )}
 
             <div className="w-[1px] h-6 bg-slate-200 shrink-0" />
             <Input

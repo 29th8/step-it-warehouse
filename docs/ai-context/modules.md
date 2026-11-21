@@ -7,7 +7,7 @@ Bảng là chỉ mục đường dẫn dựa trên cấu trúc và các lời g�
 | Chức năng | Module | File source chính | Entry point | Dependency liên quan |
 |---|---|---|---|---|
 | Sản phẩm, danh mục, thuộc tính | Products | `app/(dashboard)/products/page.tsx`, `components/products/` | `/products`, `app/api/products/route.ts` | category, definition, options, Prisma |
-| Thiết bị, lọc, chi tiết | Assets | `app/(dashboard)/assets/page.tsx`, `components/inventory/asset-action-menu.tsx` | `/assets`, `app/api/assets/route.ts` | Product, Warehouse, Rack, Asset |
+| Thiết bị, lọc, chi tiết | Assets | `app/(dashboard)/assets/page.tsx`, `components/inventory/asset-table.tsx`, `components/inventory/asset-action-menu.tsx`, `components/inventory/create-asset-modal.tsx`, `components/inventory/print-label-modal.tsx` | `/assets`, `app/api/assets/route.ts`, `app/api/product-categories/route.ts` | Product, Warehouse, Rack, Asset; menu ba chấm mở chi tiết, sao chép và in tem; form tạo lấy trực tiếp tên danh mục từ ProductCategory và gửi code nội bộ |
 | Lắp ráp và slot | Inventory | `components/inventory/assembly-config-dialog.tsx`, `lib/server-slots.ts` | `app/api/assembly/route.ts` | Asset cha/con, Hermes; có endpoint khác cần đối chiếu |
 | Import/export, thùng rác | Inventory | `components/inventory/import-asset-modal.tsx`, `components/inventory/export-assets-dialog.tsx`, `app/(dashboard)/assets/recycle-bin/page.tsx` | `app/api/assets/import/route.ts`, `app/api/assets/export/report/route.ts` | Excel, restore, Asset |
 | Kho | Warehouse | `app/(dashboard)/warehouses/page.tsx`, `components/warehouse/` | `app/api/warehouses/route.ts` | Warehouse, Rack, Asset |

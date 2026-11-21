@@ -47,3 +47,5 @@ Danh sách dưới đây dựa trên export handler trong `app/api`; quyền và
 `proxy.ts` yêu cầu session ngoài các ngoại lệ auth/login/health; bộ lọc này không thiết lập ma trận quyền. Ví dụ xóa vĩnh viễn asset kiểm tra ADMIN và các route thay đổi user kiểm tra user hiện hành; nhiều route khác không kiểm tra rõ vai trò này. Cần xác định quyền nghiệp vụ trước khi sửa endpoint. Cron và webhook cần rà soát xác thực giữa các dịch vụ; xem overview.
 
 `/assets/export/report` yêu cầu session và tài khoản còn hoạt động. GET hỗ trợ export theo bộ lọc hiện tại hoặc điều kiện tùy chọn (`categories`, `statuses` dạng danh sách phân cách bởi dấu phẩy); thêm `countOnly=true` để lấy số lượng dự kiến. POST nhận `assetIds` để export các thiết bị được chọn. Chỉ các cột được allowlist mới được xuất; workbook nhóm thiết bị theo danh mục, mỗi danh mục là một sheet.
+
+`/assets?status=NEEDS_ATTENTION` và export tương ứng là bộ lọc suy diễn, trả về cả `MAINTENANCE` và `FAULTY`; không phải enum `AssetStatus`. `WAREHOUSE_STOCK` và `AVAILABLE_STOCK` cũng là các bộ lọc suy diễn, không được lưu trực tiếp vào database.

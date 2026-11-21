@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  MoreHorizontal, Trash, Eye, Loader2, Copy,
+  MoreHorizontal, Trash, Eye, Loader2, Copy, Printer,
   AlertTriangle, Box, BrainCircuit, Tag, Activity, Calendar, FileText, Settings, X, Save, Edit3, Layers, MapPin, Clock, CalendarClock, PackageCheck, MonitorSpeaker, Cpu
 } from "lucide-react";
 
@@ -14,11 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AssemblyConfigDialog } from "@/components/inventory/assembly-config-dialog";
-import { CreateAssetModal } from "@/components/inventory/create-asset-modal";
 import { componentSlotType, getSlotNames } from "@/lib/server-slots";
 
 // ==========================================
@@ -71,6 +70,8 @@ interface AssetActionMenuProps {
   hideTrigger?: boolean;
   openToken?: number;
   onDetailClose?: () => void;
+  onCopy?: () => void;
+  onPrintLabel?: () => void;
 }
 
 interface FormDataState {
@@ -96,11 +97,10 @@ type AiAssemblyResult = {
   issues: { severity: "ERROR" | "WARNING"; message: string; source: "SYSTEM" | "HERMES" }[];
 };
 
-export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openToken, onDetailClose }: AssetActionMenuProps) {
+export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openToken, onDetailClose, onCopy, onPrintLabel }: AssetActionMenuProps) {
   // ================= STATE =================
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isCopyOpen, setIsCopyOpen] = useState(false);
   const [isAssemblyOpen, setIsAssemblyOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [detailData, setDetailData] = useState<AssetDetail | null>(null);
@@ -394,7 +394,7 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
       {!hideTrigger && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100">
+            <Button variant="ghost" size="icon" title="Thao tác thiết bị" aria-label={`Thao tác thiết bị ${asset.serialNumber}`} className="h-8 w-8 hover:bg-slate-100">
               <MoreHorizontal size={16} />
             </Button>
           </DropdownMenuTrigger>
@@ -402,6 +402,17 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
             <DropdownMenuItem onClick={handleOpenDetail} className="cursor-pointer gap-2">
               <Eye size={14} className="text-blue-600" /> Chi tiết & Sửa
             </DropdownMenuItem>
+            {onCopy && (
+              <DropdownMenuItem onClick={onCopy} className="cursor-pointer gap-2">
+                <Copy size={14} className="text-slate-600" /> Sao chép thiết bị
+              </DropdownMenuItem>
+            )}
+            {onPrintLabel && (
+              <DropdownMenuItem onClick={onPrintLabel} className="cursor-pointer gap-2">
+                <Printer size={14} className="text-slate-600" /> In tem QR
+              </DropdownMenuItem>
+            )}
+            {(onCopy || onPrintLabel) && <DropdownMenuSeparator />}
             <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="cursor-pointer gap-2 text-red-600">
               <Trash size={14} /> Xóa
             </DropdownMenuItem>
@@ -675,15 +686,6 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={!detailData.product}
-                          onClick={() => { setIsDetailOpen(false); setIsCopyOpen(true); }}
-                          className="bg-white"
-                        >
-                          <Copy className="w-4 h-4 mr-2" /> Sao chép
-                        </Button>
                         {detailProductIsMain && (
                           <Button
                             type="button"
@@ -1021,25 +1023,6 @@ export function AssetActionMenu({ asset, onRefresh, hideTrigger = false, openTok
           </div>
         </DialogContent>
       </Dialog>
-
-      {isCopyOpen && detailData?.product && (
-        <CreateAssetModal
-          onRefresh={onRefresh}
-          onCopyClose={() => { setIsCopyOpen(false); onDetailClose?.(); }}
-          copyFrom={{
-            product: {
-              ...detailData.product,
-              modelNumber: detailData.product.modelNumber || "",
-              type: detailData.product.type || "",
-              category: detailData.product.category || detailData.product.productCategory?.code || "",
-            },
-            warehouseId: detailData.warehouseId,
-            rackId: detailData.rackId,
-            rackUnit: detailData.rackUnit,
-            owner: detailData.owner,
-          }}
-        />
-      )}
 
       <AssemblyConfigDialog
         open={isAssemblyOpen}
