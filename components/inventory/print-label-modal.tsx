@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
@@ -14,6 +14,7 @@ import { Printer } from "lucide-react";
 
 interface PrintLabelProps {
   asset: {
+    id: string;
     serialNumber: string;
     product: {
       name: string;
@@ -26,6 +27,8 @@ interface PrintLabelProps {
 }
 
 export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false }: PrintLabelProps) {
+  const [origin, setOrigin] = useState("");
+  useEffect(() => { setOrigin(window.location.origin); }, []);
   const handlePrint = () => {
     window.print();
   };
@@ -50,7 +53,7 @@ export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false
             <div className="label">
               <div className="qr">
                 <QRCodeSVG
-                  value={asset.serialNumber}
+                  value={origin ? `${origin}/assets/${encodeURIComponent(asset.id)}` : asset.serialNumber}
                   size={100}
                   style={{ width: "100%", height: "100%" }}
                   level="H"
@@ -80,7 +83,7 @@ export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={handlePrint} disabled={!origin} className="bg-blue-600 hover:bg-blue-700">
             Xác nhận lệnh In
           </Button>
         </div>

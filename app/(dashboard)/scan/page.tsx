@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Server, MapPin, RefreshCw, AlertCircle, CheckCircle2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 const STATUS_LABELS: Record<string, string> = {
   IN_STOCK: "Trong kho", INSTALLED: "Đã lắp trong server", DEPLOYED: "Đang dùng", RENTED: "Đang thuê",
@@ -15,6 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function MobileScannerPage() {
+  const router = useRouter();
   const [scannedAsset, setScannedAsset] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -27,11 +29,23 @@ export default function MobileScannerPage() {
       scanner.render(async (decodedText: string) => {
         setIsScanning(false);
         scanner.clear();
-        await fetchAssetBySN(decodedText.trim().toUpperCase());
+        const value = decodedText.trim();
+        try {
+          const url = new URL(value);
+          if (url.origin === window.location.origin && /^\/assets\/[^/]+\/?$/.test(url.pathname)) {
+            router.push(url.pathname);
+            return;
+          }
+          toast.error("Mã QR không thuộc hệ thống này.");
+          setIsScanning(true);
+          return;
+        } catch {
+          await fetchAssetBySN(value);
+        }
       }, () => {});
     }
     return () => { if (scanner) scanner.clear(); };
-  }, [isScanning]);
+  }, [isScanning, router]);
 
   const fetchAssetBySN = async (sn: string) => {
     if (!sn) return;
