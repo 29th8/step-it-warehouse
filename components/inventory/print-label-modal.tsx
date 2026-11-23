@@ -28,6 +28,7 @@ interface PrintLabelProps {
 
 export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false }: PrintLabelProps) {
   const [origin, setOrigin] = useState("");
+  const [labelFormat, setLabelFormat] = useState<"full" | "qr">("full");
   useEffect(() => { setOrigin(window.location.origin); }, []);
   const handlePrint = () => {
     window.print();
@@ -45,23 +46,29 @@ export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false
           <DialogTitle>Xem trước tem nhãn</DialogTitle>
         </DialogHeader>
 
+        <fieldset className="flex flex-wrap gap-3 text-sm text-slate-700">
+          <legend className="mb-2 font-medium">Mẫu in</legend>
+          <label className="flex items-center gap-2"><input type="radio" name="label-format" checked={labelFormat === "full"} onChange={() => setLabelFormat("full")} />Tem đầy đủ</label>
+          <label className="flex items-center gap-2"><input type="radio" name="label-format" checked={labelFormat === "qr"} onChange={() => setLabelFormat("qr")} />Chỉ mã QR</label>
+        </fieldset>
+
         {/* VÙNG HIỂN THỊ TEM TRÊN GIAO DIỆN */}
         <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-slate-50 relative">
 
           {/* ĐÂY LÀ VÙNG SẼ ĐƯỢC IN (PRINT AREA) */}
           <div className="print-page relative bg-white">
-            <div className="label">
+            <div className={`label ${labelFormat === "qr" ? "label-qr-only flex justify-center" : ""}`}>
               <div className="qr">
                 <QRCodeSVG
                   value={origin ? `${origin}/assets/${encodeURIComponent(asset.id)}` : asset.serialNumber}
                   size={100}
                   style={{ width: "100%", height: "100%" }}
                   level="H"
-                  includeMargin={false}
+                  includeMargin={labelFormat === "qr"}
                 />
               </div>
 
-              <div className="label-content text-left text-black">
+              {labelFormat === "full" && <div className="label-content text-left text-black">
                 <p className="text-[12pt] font-bold truncate uppercase">{asset.product.name}</p>
                 <p className="text-[10pt] text-gray-700 truncate mb-4">{asset.product.modelNumber}</p>
 
@@ -73,7 +80,7 @@ export function PrintLabelModal({ asset, open, onOpenChange, hideTrigger = false
                 <small className="text-[8pt] font-black uppercase tracking-widest text-slate-800">
                   STEP IT WAREHOUSE
                 </small>
-              </div>
+              </div>}
             </div>
           </div>
 
