@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { AssetStatus, RentalStatus, Prisma } from "@prisma/client"; // Import chuẩn từ Prisma
 import { differenceInDays, startOfDay } from "date-fns";
 

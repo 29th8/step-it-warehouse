@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import ProfilePageClient from "./profile-page-client";
 
 export const metadata = { title: "Hồ sơ cá nhân | STEP IT Warehouse" };

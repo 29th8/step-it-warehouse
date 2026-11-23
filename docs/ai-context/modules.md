@@ -31,6 +31,6 @@ Bảng là chỉ mục đường dẫn dựa trên cấu trúc và các lời g�
 - Kho/rack: bắt đầu từ các trang và component trong bảng, sau đó đọc `app/api/warehouses/`, `app/api/racks/` và `lib/rack-utils.ts`.
 - Chi tiết kho tại `app/(dashboard)/warehouses/[id]/page.tsx` gọi `GET /api/warehouses/[id]`: phân loại số tài sản chưa xóa, danh sách tủ và danh sách ngoài tủ có phân trang backend; click tủ mở `/racks/[id]`. Mục Tủ Rack được ẩn khỏi điều hướng, nhưng các route `/racks` vẫn được giữ.
 - Thuê: đọc `app/(dashboard)/rentals/create/page.tsx`, `app/api/rentals/route.ts`, `app/api/rentals/return/route.ts` và service cảnh báo; bàn giao: đọc trang handovers, route tạo và `app/api/handovers/[id]/return/route.ts`.
-- Đăng nhập/quyền: đọc `app/api/auth/[...nextauth]/route.ts`, `proxy.ts` và handler cụ thể. Deploy: đọc workflow và `scripts/deploy-vps.sh`; xem [deployment.md](deployment.md).
+- Đăng nhập/quyền: đọc `lib/auth.ts`, `app/api/auth/[...nextauth]/route.ts`, `proxy.ts` và handler cụ thể. Deploy: đọc workflow và `scripts/deploy-vps.sh`; xem [deployment.md](deployment.md).
 
 Chưa có ma trận đầy đủ transaction, validation và tác động chéo của từng thao tác. Agent mới vẫn phải đọc các handler liên quan trước khi sửa; các đường dẫn trên là điểm khởi đầu, không khẳng định mọi consumer đã được liệt kê.

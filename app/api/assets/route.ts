@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import { checkRackOverlap } from "@/lib/rack-utils"; // Đảm bảo bạn đã tạo file này
 import { getProductRackUnitHeight } from "@/lib/product-u-height";

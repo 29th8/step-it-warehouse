@@ -25,7 +25,9 @@ export default function LoginPage() {
     });
 
     if (res?.ok) {
-      router.replace("/");
+      const callback = new URLSearchParams(window.location.search).get("callbackUrl");
+      const destination = callback?.startsWith("/") && !callback.startsWith("//") && !callback.startsWith("/\\") ? callback : "/";
+      router.replace(destination);
       router.refresh();
     } else {
       toast.error(res?.error || "Sai tài khoản hoặc mật khẩu");

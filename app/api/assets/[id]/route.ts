@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 // Giả định bạn đã tạo file này theo gợi ý của AI trước đó
 import { checkRackOverlap } from "@/lib/rack-utils";
 import { collectAssetTree, resolveRestoredStatus } from "@/lib/asset-tree";

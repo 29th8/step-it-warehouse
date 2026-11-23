@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { getProductRackUnitHeight } from "@/lib/product-u-height";
 import { componentSlotType, getSlotNames, validateComponentCompatibility } from "@/lib/server-slots";
 import { checkRackOverlap } from "@/lib/rack-utils";

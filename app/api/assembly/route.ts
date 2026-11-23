@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { componentSlotType, getSlotNames, isServerProduct } from "@/lib/server-slots";
 
 function assertParentInStock(parentAsset: { status?: string | null; serialNumber?: string | null }) {

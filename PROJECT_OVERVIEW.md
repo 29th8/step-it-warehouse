@@ -67,7 +67,7 @@ Mức độ phản ánh rủi ro tiềm năng theo mã, không khẳng định �
 
 ### Medium
 
-- **Phiên không thu hồi khi đổi quyền/vô hiệu hóa:** `app/api/auth/[...nextauth]/route.ts`. JWT chứa role lúc login, thời hạn 30 ngày, không đọc lại user trong callback. Các route dựa vào role JWT vẫn có thể chấp nhận quyền cũ; kiểm tra user active/role phía server hoặc cơ chế thu hồi phiên.
+- **Phiên và quyền:** `lib/auth.ts`, `proxy.ts` kiểm tra thời hạn, trạng thái tài khoản và role hiện tại; khi role đổi, phiên cũ bị từ chối. API đã được kiểm thử trên database độc lập, nhưng cần kiểm thử trình duyệt nhiều tab; chưa xác minh hiệu năng của truy vấn user trên mỗi request.
 - **Quyền chưa nhất quán:** `app/api/product-categories/route.ts`, `app/api/assets/[id]/restore/route.ts`, `app/api/assets/recycle-bin/route.ts`, `app/api/users/route.ts`. Các route này dựa vào proxy hoặc session nhưng không kiểm tra ADMIN cho những hành động tương ứng; UI ẩn chức năng không tạo ranh giới quyền. Xác định ma trận quyền nghiệp vụ, kiểm tra server-side và test theo role; chưa kết luận mọi thao tác này bắt buộc ADMIN khi chưa có chính sách được xác nhận.
 - **Định danh actor theo tên không duy nhất:** `app/api/handovers/route.ts`, `app/api/assets/assemble/route.ts` và các route tương tự tìm user qua name hoặc username thay vì id trong session. Hai user trùng tên có thể gây ghi lịch sử sai actor. Dùng session.user.id và kiểm tra user hiện hành.
 - **Linh kiện trả bàn giao:** `app/api/handovers/[id]/return/route.ts` đặt mọi asset IN_STOCK kể cả component vẫn có parentId, trong khi các đường lắp ráp dùng INSTALLED. Có thể vi phạm quy ước trạng thái; cần xác định trạng thái theo quan hệ và kiểm thử bàn giao nguyên server.

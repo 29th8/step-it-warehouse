@@ -1,5 +1,13 @@
 # Triển khai và vận hành
 
+## Kiểm thử phiên trên local
+
+`scripts/test-session-integration.cjs` chỉ chạy khi `DATABASE_URL` trỏ tới `127.0.0.1:55439/session_test` và `SESSION_TEST_URL` là `http://localhost:3117`. Cần tạo PostgreSQL thử nghiệm riêng, tạo schema từ `prisma/schema.prisma`, tạo user `session_test` role ADMIN với mật khẩu test của script, và chạy bản sao ứng dụng với `NEXTAUTH_SECRET` thử nghiệm. Không trỏ script hay `prisma db push` vào database kho. Script kiểm tra đăng nhập, cập nhật hoạt động, JWT hết hạn, role/khóa tài khoản và redirect; không thay thế test trình duyệt nhiều tab hoặc build production.
+
+Đã kiểm tra bản build webpack local với database thử nghiệm: build thành công, script API thành công; Chrome headless xác nhận đăng nhập qua form, chuyển tới URL ban đầu, cảnh báo trước hạn khi mô phỏng thời gian và một tab không đăng xuất ở hạn cũ sau khi tab khác gia hạn phiên. Chưa kiểm tra toàn bộ trường hợp nhiều tab đồng thời hoặc container production thực tế; `next start` đã được dùng để thử API và trình duyệt.
+
+Khi thử migration vào database rỗng, `prisma migrate deploy` thất bại ở `20260709000000_dynamic_product_categories` do thiếu kiểu `ProductCategory` nền; thử nghiệm dùng `prisma db push` chỉ trên database rỗng riêng. Không suy ra rằng migration trên production an toàn từ thử nghiệm này.
+
 [Tổng quan](../../PROJECT_OVERVIEW.md) · [Kiến trúc](architecture.md)
 
 Repo khai báo Dockerfile Node 20 Alpine đa giai đoạn, Next standalone và Prisma CLI; Compose khai báo app, PostgreSQL 16, Nginx, cron và Certbot. PostgreSQL dùng volume được đặt tên; không giả định database local và production giống nhau.
