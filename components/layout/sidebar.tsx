@@ -2,13 +2,14 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useSidebar } from "@/context/sidebar-context";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Server,
-  ChevronLeft, ChevronRight, Monitor, History,
+  ChevronLeft, ChevronRight, History,
   MapPin, Users, ClipboardList,
 } from "lucide-react";
 
@@ -32,9 +33,7 @@ export function Sidebar() {
       </button>
 
       <div className="p-6 flex items-center gap-3 border-b h-16 shrink-0 overflow-hidden">
-        <div className="bg-blue-600 p-2 rounded-lg text-white shrink-0">
-          <Monitor size={20} />
-        </div>
+        <Image src="/step-logo.png" alt="STEP IT" width={36} height={36} className="h-9 w-9 rounded-md object-cover shrink-0" />
         {!isCollapsed && <span className="font-bold text-xl tracking-tight text-slate-800 transition-opacity duration-300">Step-IT</span>}
       </div>
 

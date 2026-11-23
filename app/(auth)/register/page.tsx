@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,7 +52,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <Card className="w-full max-w-[400px] shadow-xl">
         <CardHeader className="text-center">
-          <div className="mb-2 flex justify-center"><div className="rounded-lg bg-blue-600 p-2 text-white"><ShieldCheck size={32} /></div></div>
+          <div className="mb-2 flex justify-center"><Image src="/step-logo.png" alt="STEP IT" width={56} height={56} className="h-14 w-14 rounded-md object-cover" /></div>
           <CardTitle className="text-2xl font-bold">Đăng ký tài khoản</CardTitle>
         </CardHeader>
         <CardContent>

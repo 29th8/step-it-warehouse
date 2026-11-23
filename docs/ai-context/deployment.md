@@ -1,5 +1,9 @@
 # Triển khai và vận hành
 
+## Gia hạn chứng chỉ VPS
+
+Trên VPS kho, crontab của user `step` chạy `/home/step/warehouse-cert-renew.sh` lúc 03:17 và 15:17 UTC. Script nguồn local là `scripts/renew-warehouse-certificate.sh`; bản trên VPS độc lập với checkout deploy và cần được đồng bộ khi sửa script. Job chạy Certbot trong container dùng volume Compose hiện hữu, sau đó so sánh chứng chỉ trên đĩa với chứng chỉ Nginx đang phục vụ; khi khác, kiểm tra cấu hình và reload Nginx. Log: `/home/step/warehouse-cert-renew.log`; backup crontab trước khi thêm job: `/home/step/crontab-before-cert-20261123.bak`. Let’s Encrypt staging dry-run đã thành công; lần gia hạn thực tế tiếp theo và cảnh báo lỗi tự động chưa được xác minh. Không chạy song song thêm vòng lặp Certbot mà chưa đánh giá xung đột.
+
 ## Kiểm thử phiên trên local
 
 `scripts/test-session-integration.cjs` chỉ chạy khi `DATABASE_URL` trỏ tới `127.0.0.1:55439/session_test` và `SESSION_TEST_URL` là `http://localhost:3117`. Cần tạo PostgreSQL thử nghiệm riêng, tạo schema từ `prisma/schema.prisma`, tạo user `session_test` role ADMIN với mật khẩu test của script, và chạy bản sao ứng dụng với `NEXTAUTH_SECRET` thử nghiệm. Không trỏ script hay `prisma db push` vào database kho. Script kiểm tra đăng nhập, cập nhật hoạt động, JWT hết hạn, role/khóa tài khoản và redirect; không thay thế test trình duyệt nhiều tab hoặc build production.

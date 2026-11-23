@@ -13,6 +13,10 @@ const inter = Inter({ subsets: ["latin", "vietnamese"] });
 export const metadata: Metadata = {
   title: "Step IT Warehouse Management",
   description: "Hệ thống quản lý kho vật tư IT nội bộ cho Step Company",
+  icons: {
+    icon: [{ url: "/step-logo.png", type: "image/png" }],
+    apple: "/step-logo.png",
+  },
 };
 
 export default function RootLayout({

@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -38,9 +38,7 @@ export default function LoginPage() {
       <Card className="w-[400px] shadow-xl">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
-              <ShieldCheck size={32} />
-            </div>
+            <Image src="/step-logo.png" alt="STEP IT" width={56} height={56} className="h-14 w-14 rounded-md object-cover" />
           </div>
           <CardTitle className="text-2xl font-bold">Step IT Warehouse</CardTitle>
           <p className="text-sm text-muted-foreground">Đăng nhập để quản lý kho vật tư</p>
